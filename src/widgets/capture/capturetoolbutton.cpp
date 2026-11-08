@@ -86,11 +86,10 @@ const QList<CaptureTool::Type>& CaptureToolButton::getIterableButtonTypes()
 // get icon returns the icon for the type of button
 QIcon CaptureToolButton::icon() const
 {
-    QColor effectiveBg = m_mainColor.isValid()
-                           ? m_mainColor
-                           : (ThemeUtils::isSystemDarkMode()
-                                ? QColor(32, 32, 32)
-                                : QColor(240, 240, 240));
+    QColor effectiveBg = m_mainColor.isValid() ? m_mainColor
+                                               : (ThemeUtils::isSystemDarkMode()
+                                                    ? QColor(32, 32, 32)
+                                                    : QColor(240, 240, 240));
     return m_tool->icon(effectiveBg, true);
 }
 

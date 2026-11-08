@@ -63,10 +63,9 @@ size_t ButtonHandler::size() const
     return m_vectorButtons.size();
 }
 
-// updatePosition updates the position of the buttons around the
-// selection area. Ignores the sides blocked by the end of the screen.
-// updatePosition updates the position of the buttons as a modern floating toolbar
-// docked right below (or above/inside) the selection area, respecting screen bounds.
+// updatePosition updates the position of the buttons as a modern floating
+// toolbar docked right below (or above/inside) the selection area, respecting
+// screen bounds.
 void ButtonHandler::updatePosition(const QRect& selection)
 {
     resetRegionTrack();
@@ -95,8 +94,11 @@ void ButtonHandler::updatePosition(const QRect& selection)
     const int margin = m_separator * 2;
 
     // Calculate how many buttons can fit in a horizontal toolbar row
-    int maxAvailableWidth = screenBounds.isValid() ? screenBounds.width() - (2 * margin) : selection.width();
-    int buttonsPerRow = qMax(1, (maxAvailableWidth + gap) / (buttonWidth + gap));
+    int maxAvailableWidth = screenBounds.isValid()
+                              ? screenBounds.width() - (2 * margin)
+                              : selection.width();
+    int buttonsPerRow =
+      qMax(1, (maxAvailableWidth + gap) / (buttonWidth + gap));
     if (buttonsPerRow > vecLength) {
         buttonsPerRow = vecLength;
     }
@@ -106,10 +108,14 @@ void ButtonHandler::updatePosition(const QRect& selection)
 
     // Check if toolbar fits below the selection
     int toolbarY;
-    if (!m_blockedBotton && (m_selection.bottom() + margin + totalToolbarHeight <= screenBounds.bottom())) {
+    if (!m_blockedBotton &&
+        (m_selection.bottom() + margin + totalToolbarHeight <=
+         screenBounds.bottom())) {
         toolbarY = m_selection.bottom() + margin;
         m_buttonsAreInside = false;
-    } else if (!m_blockedTop && (m_selection.top() - margin - totalToolbarHeight >= screenBounds.top())) {
+    } else if (!m_blockedTop &&
+               (m_selection.top() - margin - totalToolbarHeight >=
+                screenBounds.top())) {
         // Place above selection
         toolbarY = m_selection.top() - margin - totalToolbarHeight;
         m_buttonsAreInside = false;
@@ -127,7 +133,8 @@ void ButtonHandler::updatePosition(const QRect& selection)
         int countInRow = qMin(buttonsPerRow, vecLength - buttonIdx);
         int rowWidth = countInRow * buttonWidth + (countInRow - 1) * gap;
 
-        // Center horizontally relative to selection center, then clamp to screen bounds
+        // Center horizontally relative to selection center, then clamp to
+        // screen bounds
         int startX = m_selection.center().x() - (rowWidth / 2);
         if (screenBounds.isValid()) {
             if (startX + rowWidth > screenBounds.right() - margin) {

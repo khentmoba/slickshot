@@ -160,7 +160,8 @@ void applyApplicationTheme()
         palette.setColor(QPalette::ToolTipText, text);
         palette.setColor(QPalette::Text, text);
         palette.setColor(QPalette::Disabled, QPalette::Text, disabledText);
-        palette.setColor(QPalette::Disabled, QPalette::WindowText, disabledText);
+        palette.setColor(
+          QPalette::Disabled, QPalette::WindowText, disabledText);
         palette.setColor(QPalette::Button, darkSurface);
         palette.setColor(QPalette::ButtonText, text);
         palette.setColor(QPalette::BrightText, Qt::red);
@@ -181,7 +182,8 @@ void applyApplicationTheme()
         palette.setColor(QPalette::ToolTipText, text);
         palette.setColor(QPalette::Text, text);
         palette.setColor(QPalette::Disabled, QPalette::Text, disabledText);
-        palette.setColor(QPalette::Disabled, QPalette::WindowText, disabledText);
+        palette.setColor(
+          QPalette::Disabled, QPalette::WindowText, disabledText);
         palette.setColor(QPalette::Button, lightSurface);
         palette.setColor(QPalette::ButtonText, text);
         palette.setColor(QPalette::BrightText, Qt::red);
