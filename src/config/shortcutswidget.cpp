@@ -264,14 +264,14 @@ void ShortcutsWidget::checkPrintScreenForcesSnipping()
     if (!isPrintScreenKeyForSnippingDisabled() &&
         !ConfigHandler().ignorePrntScrForcesSnipping()) {
         QMessageBox msgBox;
-        msgBox.setWindowTitle("Flameshot");
+        msgBox.setWindowTitle("SlickShot");
         msgBox.setIcon(QMessageBox::Question);
-        msgBox.setText(tr("It seems, that Windows forces to open its screenshot"
+        msgBox.setText(tr("It seems that Windows forces its default screenshot"
                           " tool when the 'Print Screen' key is pressed. Would "
-                          "you like to disable this so that Flameshot can use "
+                          "you like to disable this so that SlickShot can use "
                           "the 'Print Screen' key?") +
                        "\n\n" +
-                       tr("Flameshot must be restarted for changes to take "
+                       tr("SlickShot must be restarted for changes to take "
                           "effect."));
         QPushButton* yesBtn = msgBox.addButton(QMessageBox::Yes);
         QPushButton* noBtn = msgBox.addButton(QMessageBox::No);
@@ -284,7 +284,7 @@ void ShortcutsWidget::checkPrintScreenForcesSnipping()
         if (msgBox.clickedButton() == yesBtn) {
             if (!disablePrintScreenKeyForSnipping()) {
                 QMessageBox::warning(
-                  this, "Flameshot", tr("The registry could not be changed!"));
+                  this, "SlickShot", tr("The registry could not be changed!"));
             }
         } else if (msgBox.clickedButton() == noDontAskAgainBtn) {
             ConfigHandler().setIgnorePrntScrForcesSnipping(true);
@@ -315,11 +315,11 @@ bool ShortcutsWidget::disablePrintScreenKeyForSnipping()
 void ShortcutsWidget::initMsScreenclipCheckbox()
 {
     m_registerMsScreenclip =
-      new QCheckBox(tr("Register Flameshot as MS-SCREENCLIP application "
+      new QCheckBox(tr("Register SlickShot as MS-SCREENCLIP application "
                        "(administrator privileges required)"),
                     this);
     m_registerMsScreenclip->setToolTip(
-      tr("After registering, you can select Flameshot as the default "
+      tr("After registering, you can select SlickShot as the default "
          "screenshot application in Windows Settings."));
     m_registerMsScreenclip->setChecked(isMsScreenclipRegistered());
     m_layout->addWidget(m_registerMsScreenclip);
@@ -330,9 +330,9 @@ void ShortcutsWidget::initMsScreenclipCheckbox()
               if (!registerMsScreenclip()) {
                   QMessageBox::warning(
                     this,
-                    "Flameshot",
+                    "SlickShot",
                     tr("The registry could not be changed!") + "\n" +
-                      tr("You may start Flameshot as administrator ONCE and "
+                      tr("You may start SlickShot as administrator ONCE and "
                          "try again!"));
                   m_registerMsScreenclip->setChecked(false);
               }
@@ -340,9 +340,9 @@ void ShortcutsWidget::initMsScreenclipCheckbox()
               if (!unregisterMsScreenclip()) {
                   QMessageBox::warning(
                     this,
-                    "Flameshot",
+                    "SlickShot",
                     tr("The registry could not be changed!") + "\n" +
-                      tr("You may start Flameshot as administrator ONCE and "
+                      tr("You may start SlickShot as administrator ONCE and "
                          "try again!"));
                   m_registerMsScreenclip->setChecked(true);
               }
@@ -353,30 +353,51 @@ void ShortcutsWidget::initMsScreenclipCheckbox()
 bool ShortcutsWidget::isMsScreenclipRegistered()
 {
     QSettings URLAssociations(
-      "HKEY_LOCAL_MACHINE\\SOFTWARE\\Flameshot\\Capabilities\\URLAssociations",
+      "HKEY_LOCAL_MACHINE\\SOFTWARE\\SlickShot\\Capabilities\\URLAssociations",
       QSettings::NativeFormat);
     QString value = URLAssociations.value("ms-screenclip", "").toString();
-    if (value.toLower() != "flameshot")
-        return false;
+    if (value.toLower() != "slickshot") {
+        // Fallback check for legacy key
+        QSettings legacyAssoc(
+          "HKEY_LOCAL_MACHINE\\SOFTWARE\\Flameshot\\Capabilities\\URLAssociations",
+          QSettings::NativeFormat);
+        value = legacyAssoc.value("ms-screenclip", "").toString();
+        if (value.toLower() != "flameshot")
+            return false;
+    }
 
     QSettings RegisteredApplications(
       "HKEY_LOCAL_MACHINE\\SOFTWARE\\RegisteredApplications",
       QSettings::NativeFormat);
-    value = RegisteredApplications.value("Flameshot", "").toString();
+    value = RegisteredApplications.value("SlickShot", "").toString();
     if (value.toLower() !=
-        QString("SOFTWARE\\Flameshot\\Capabilities").toLower())
-        return false;
+        QString("SOFTWARE\\SlickShot\\Capabilities").toLower()) {
+        value = RegisteredApplications.value("Flameshot", "").toString();
+        if (value.toLower() !=
+            QString("SOFTWARE\\Flameshot\\Capabilities").toLower())
+            return false;
+    }
 
-    QSettings FlameshotShellCmd(
-      "HKEY_CURRENT_USER\\Software\\Classes\\Flameshot\\Shell\\Open\\command",
+    QSettings SlickShotShellCmd(
+      "HKEY_CURRENT_USER\\Software\\Classes\\SlickShot\\Shell\\Open\\command",
       QSettings::NativeFormat);
-    value = FlameshotShellCmd.value(".").toString();
+    value = SlickShotShellCmd.value(".").toString();
     if (value.toLower() != QString("\"" +
                                    QDir::toNativeSeparators(
                                      QCoreApplication::applicationFilePath()) +
                                    "\" gui")
-                             .toLower())
-        return false;
+                             .toLower()) {
+        QSettings legacyShell(
+          "HKEY_CURRENT_USER\\Software\\Classes\\Flameshot\\Shell\\Open\\command",
+          QSettings::NativeFormat);
+        value = legacyShell.value(".").toString();
+        if (value.toLower() != QString("\"" +
+                                       QDir::toNativeSeparators(
+                                         QCoreApplication::applicationFilePath()) +
+                                       "\" gui")
+                                 .toLower())
+            return false;
+    }
 
     return true; // All registry entries found
 }
@@ -384,9 +405,9 @@ bool ShortcutsWidget::isMsScreenclipRegistered()
 bool ShortcutsWidget::registerMsScreenclip()
 {
     QSettings URLAssociations(
-      "HKEY_LOCAL_MACHINE\\SOFTWARE\\Flameshot\\Capabilities\\URLAssociations",
+      "HKEY_LOCAL_MACHINE\\SOFTWARE\\SlickShot\\Capabilities\\URLAssociations",
       QSettings::NativeFormat);
-    URLAssociations.setValue("ms-screenclip", "Flameshot");
+    URLAssociations.setValue("ms-screenclip", "SlickShot");
     URLAssociations.sync();
     if (QSettings::AccessError == URLAssociations.status()) {
         return false;
@@ -395,22 +416,22 @@ bool ShortcutsWidget::registerMsScreenclip()
     QSettings RegisteredApplications(
       "HKEY_LOCAL_MACHINE\\SOFTWARE\\RegisteredApplications",
       QSettings::NativeFormat);
-    RegisteredApplications.setValue("Flameshot",
-                                    "SOFTWARE\\Flameshot\\Capabilities");
+    RegisteredApplications.setValue("SlickShot",
+                                    "SOFTWARE\\SlickShot\\Capabilities");
     RegisteredApplications.sync();
     if (QSettings::AccessError == RegisteredApplications.status()) {
         return false;
     }
 
-    QSettings FlameshotShellCmd(
-      "HKEY_CURRENT_USER\\Software\\Classes\\Flameshot\\Shell\\Open\\command",
+    QSettings SlickShotShellCmd(
+      "HKEY_CURRENT_USER\\Software\\Classes\\SlickShot\\Shell\\Open\\command",
       QSettings::NativeFormat);
-    FlameshotShellCmd.setValue(
+    SlickShotShellCmd.setValue(
       ".",
       "\"" + QDir::toNativeSeparators(QCoreApplication::applicationFilePath()) +
         "\" gui");
-    FlameshotShellCmd.sync();
-    if (QSettings::AccessError == FlameshotShellCmd.status()) {
+    SlickShotShellCmd.sync();
+    if (QSettings::AccessError == SlickShotShellCmd.status()) {
         return false;
     }
 
@@ -419,31 +440,35 @@ bool ShortcutsWidget::registerMsScreenclip()
 
 bool ShortcutsWidget::unregisterMsScreenclip()
 {
-    QSettings FlameshotShellCmd("HKEY_CURRENT_USER\\Software\\Classes",
+    QSettings SlickShotShellCmd("HKEY_CURRENT_USER\\Software\\Classes",
                                 QSettings::NativeFormat);
-    FlameshotShellCmd.remove("Flameshot");
-    FlameshotShellCmd.sync();
-    if (QSettings::AccessError == FlameshotShellCmd.status()) {
-        return false;
-    }
+    SlickShotShellCmd.remove("SlickShot");
+    SlickShotShellCmd.sync();
 
     QSettings RegisteredApplications(
       "HKEY_LOCAL_MACHINE\\SOFTWARE\\RegisteredApplications",
       QSettings::NativeFormat);
-    RegisteredApplications.remove("Flameshot");
+    RegisteredApplications.remove("SlickShot");
     RegisteredApplications.sync();
-    if (QSettings::AccessError == RegisteredApplications.status()) {
-        return false;
-    }
 
     QSettings URLAssociations(
-      "HKEY_LOCAL_MACHINE\\SOFTWARE\\Flameshot\\Capabilities\\URLAssociations",
+      "HKEY_LOCAL_MACHINE\\SOFTWARE\\SlickShot\\Capabilities\\URLAssociations",
       QSettings::NativeFormat);
     URLAssociations.remove("ms-screenclip");
     URLAssociations.sync();
-    if (QSettings::AccessError == URLAssociations.status()) {
-        return false;
-    }
+
+    // Clean legacy entries as well
+    QSettings legacyShellCmd("HKEY_CURRENT_USER\\Software\\Classes",
+                             QSettings::NativeFormat);
+    legacyShellCmd.remove("Flameshot");
+    legacyShellCmd.sync();
+    RegisteredApplications.remove("Flameshot");
+    RegisteredApplications.sync();
+    QSettings legacyAssoc(
+      "HKEY_LOCAL_MACHINE\\SOFTWARE\\Flameshot\\Capabilities\\URLAssociations",
+      QSettings::NativeFormat);
+    legacyAssoc.remove("ms-screenclip");
+    legacyAssoc.sync();
 
     return !isMsScreenclipRegistered();
 }
