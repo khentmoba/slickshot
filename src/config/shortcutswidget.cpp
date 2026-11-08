@@ -359,7 +359,8 @@ bool ShortcutsWidget::isMsScreenclipRegistered()
     if (value.toLower() != "slickshot") {
         // Fallback check for legacy key
         QSettings legacyAssoc(
-          "HKEY_LOCAL_MACHINE\\SOFTWARE\\Flameshot\\Capabilities\\URLAssociations",
+          "HKEY_LOCAL_"
+          "MACHINE\\SOFTWARE\\Flameshot\\Capabilities\\URLAssociations",
           QSettings::NativeFormat);
         value = legacyAssoc.value("ms-screenclip", "").toString();
         if (value.toLower() != "flameshot")
@@ -388,14 +389,16 @@ bool ShortcutsWidget::isMsScreenclipRegistered()
                                    "\" gui")
                              .toLower()) {
         QSettings legacyShell(
-          "HKEY_CURRENT_USER\\Software\\Classes\\Flameshot\\Shell\\Open\\command",
+          "HKEY_CURRENT_"
+          "USER\\Software\\Classes\\Flameshot\\Shell\\Open\\command",
           QSettings::NativeFormat);
         value = legacyShell.value(".").toString();
-        if (value.toLower() != QString("\"" +
-                                       QDir::toNativeSeparators(
-                                         QCoreApplication::applicationFilePath()) +
-                                       "\" gui")
-                                 .toLower())
+        if (value.toLower() !=
+            QString("\"" +
+                    QDir::toNativeSeparators(
+                      QCoreApplication::applicationFilePath()) +
+                    "\" gui")
+              .toLower())
             return false;
     }
 
