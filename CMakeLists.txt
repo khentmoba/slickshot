@@ -3,14 +3,14 @@ cmake_minimum_required(VERSION 3.22)
 
 set(FLAMESHOT_VERSION 15.0.0)
 
-# Flameshot-org
-set(GIT_API_URL "https://api.github.com/repos/flameshot-org/flameshot/releases/latest")
+# SlickShot (standalone fork of Flameshot)
+set(GIT_API_URL "https://api.github.com/repos/khentmoba/slickshot/releases/latest")
 
 project(
   flameshot
   VERSION ${FLAMESHOT_VERSION}
   LANGUAGES CXX)
-set(PROJECT_NAME_CAPITALIZED "Flameshot")
+set(PROJECT_NAME_CAPITALIZED "SlickShot")
 
 include(FetchContent)
 #Must be set before fetching external content!
