@@ -4,6 +4,7 @@
 #include "capturebutton.h"
 #include "utils/colorutils.h"
 #include "utils/globalvalues.h"
+#include "utils/themeutils.h"
 
 #include <QGraphicsDropShadowEffect>
 
@@ -47,23 +48,7 @@ QString CaptureButton::globalStyleSheet()
 
 QString CaptureButton::styleSheet() const
 {
-    QString baseSheet = "CaptureButton { border: none;"
-                        "padding: 3px 8px;"
-                        "background-color: %1; color: %4 }"
-                        "CaptureToolButton { border-radius: %3;"
-                        "padding: 0; }"
-                        "CaptureButton:hover { background-color: %2; }"
-                        "CaptureButton:pressed:!hover { "
-                        "background-color: %1; }";
-    // define color when mouse is hovering
-    QColor contrast = ColorUtils::contrastColor(m_mainColor);
-    // foreground color
-    QColor color = ColorUtils::colorIsDark(m_mainColor) ? Qt::white : Qt::black;
-
-    return baseSheet.arg(m_mainColor.name(),
-                         contrast.name(),
-                         QString::number(GlobalValues::buttonBaseSize() / 2),
-                         color.name());
+    return ThemeUtils::buttonStyleSheet(m_mainColor);
 }
 
 void CaptureButton::setColor(const QColor& c)

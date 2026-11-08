@@ -65,8 +65,8 @@ size_t ButtonHandler::size() const
 
 // updatePosition updates the position of the buttons around the
 // selection area. Ignores the sides blocked by the end of the screen.
-// When the selection is too small, it works on a virtual selection with
-// the original in the center.
+// updatePosition updates the position of the buttons as a modern floating toolbar
+// docked right below (or above/inside) the selection area, respecting screen bounds.
 void ButtonHandler::updatePosition(const QRect& selection)
 {
     resetRegionTrack();
@@ -77,93 +77,72 @@ void ButtonHandler::updatePosition(const QRect& selection)
     // Copy of the selection area for internal modifications
     m_selection = intersectWithAreas(selection);
     updateBlockedSides();
-    ensureSelectionMinimumSize();
-    // Indicates the actual button to be moved
-    int elemIndicator = 0;
 
-    while (elemIndicator < vecLength) {
-
-        // Add them inside the area when there is no more space
-        if (m_allSidesBlocked) {
-            m_selection = selection;
-            positionButtonsInside(elemIndicator);
-            break; // the while
+    // Determine available screen bounds containing the selection
+    QRect screenBounds;
+    for (const QRect& rect : m_screenRegions) {
+        if (rect.intersects(selection)) {
+            screenBounds = screenBounds.united(rect);
         }
-        // Number of buttons per row column
-        int buttonsPerRow =
-          (m_selection.width() + m_separator) / (m_buttonExtendedSize);
-        int buttonsPerCol =
-          (m_selection.height() + m_separator) / (m_buttonExtendedSize);
-        // Buttons to be placed in the corners
-        int extraButtons =
-          (vecLength - elemIndicator) - (buttonsPerRow + buttonsPerCol) * 2;
-        int elemsAtCorners = extraButtons > 4 ? 4 : extraButtons;
-        int maxExtra = 2;
-        if (m_oneHorizontalBlocked) {
-            maxExtra = 1;
-        } else if (m_horizontalyBlocked) {
-            maxExtra = 0;
-        }
-        int elemCornersTop = qBound(0, elemsAtCorners, maxExtra);
-        elemsAtCorners -= elemCornersTop;
-        int elemCornersBotton = qBound(0, elemsAtCorners, maxExtra);
+    }
+    if (screenBounds.isEmpty() && !m_screenRegions.isEmpty()) {
+        screenBounds = m_screenRegions.first();
+    }
 
-        // Add buttons at the button of the selection
-        if (!m_blockedBotton) {
-            int addCounter = buttonsPerRow + elemCornersBotton;
-            // Don't add more than we have
-            addCounter = qBound(0, addCounter, vecLength - elemIndicator);
-            QPoint center = QPoint(m_selection.center().x(),
-                                   m_selection.bottom() + m_separator);
-            if (addCounter > buttonsPerRow) {
-                adjustHorizontalCenter(center);
+    const int buttonWidth = m_buttonExtendedSize;
+    const int buttonHeight = m_buttonBaseSize;
+    const int gap = m_separator;
+    const int margin = m_separator * 2;
+
+    // Calculate how many buttons can fit in a horizontal toolbar row
+    int maxAvailableWidth = screenBounds.isValid() ? screenBounds.width() - (2 * margin) : selection.width();
+    int buttonsPerRow = qMax(1, (maxAvailableWidth + gap) / (buttonWidth + gap));
+    if (buttonsPerRow > vecLength) {
+        buttonsPerRow = vecLength;
+    }
+
+    int rows = (vecLength + buttonsPerRow - 1) / buttonsPerRow;
+    int totalToolbarHeight = rows * buttonHeight + (rows - 1) * gap;
+
+    // Check if toolbar fits below the selection
+    int toolbarY;
+    if (!m_blockedBotton && (m_selection.bottom() + margin + totalToolbarHeight <= screenBounds.bottom())) {
+        toolbarY = m_selection.bottom() + margin;
+        m_buttonsAreInside = false;
+    } else if (!m_blockedTop && (m_selection.top() - margin - totalToolbarHeight >= screenBounds.top())) {
+        // Place above selection
+        toolbarY = m_selection.top() - margin - totalToolbarHeight;
+        m_buttonsAreInside = false;
+    } else {
+        // Dock inside selection near the bottom
+        toolbarY = m_selection.bottom() - margin - totalToolbarHeight;
+        if (toolbarY < m_selection.top()) {
+            toolbarY = m_selection.top() + margin;
+        }
+        m_buttonsAreInside = true;
+    }
+
+    int buttonIdx = 0;
+    for (int r = 0; r < rows && buttonIdx < vecLength; ++r) {
+        int countInRow = qMin(buttonsPerRow, vecLength - buttonIdx);
+        int rowWidth = countInRow * buttonWidth + (countInRow - 1) * gap;
+
+        // Center horizontally relative to selection center, then clamp to screen bounds
+        int startX = m_selection.center().x() - (rowWidth / 2);
+        if (screenBounds.isValid()) {
+            if (startX + rowWidth > screenBounds.right() - margin) {
+                startX = screenBounds.right() - margin - rowWidth;
             }
-            // ElemIndicator, elemsAtCorners
-            QVector<QPoint> positions =
-              horizontalPoints(center, addCounter, true);
-            moveButtonsToPoints(positions, elemIndicator);
-        }
-        // Add buttons to the right side of the selection
-        if (!m_blockedRight && elemIndicator < vecLength) {
-            int addCounter = buttonsPerCol;
-            addCounter = qBound(0, addCounter, vecLength - elemIndicator);
-
-            QPoint center = QPoint(m_selection.right() + m_separator,
-                                   m_selection.center().y());
-            QVector<QPoint> positions =
-              verticalPoints(center, addCounter, false);
-            moveButtonsToPoints(positions, elemIndicator);
-        }
-        // Add buttons at the top of the selection
-        if (!m_blockedTop && elemIndicator < vecLength) {
-            int addCounter = buttonsPerRow + elemCornersTop;
-            addCounter = qBound(0, addCounter, vecLength - elemIndicator);
-            QPoint center = QPoint(m_selection.center().x(),
-                                   m_selection.top() - m_buttonExtendedSize);
-            if (addCounter == 1 + buttonsPerRow) {
-                adjustHorizontalCenter(center);
+            if (startX < screenBounds.left() + margin) {
+                startX = screenBounds.left() + margin;
             }
-            QVector<QPoint> positions =
-              horizontalPoints(center, addCounter, false);
-            moveButtonsToPoints(positions, elemIndicator);
         }
-        // Add buttons to the left side of the selection
-        if (!m_blockedLeft && elemIndicator < vecLength) {
-            int addCounter = buttonsPerCol;
-            addCounter = qBound(0, addCounter, vecLength - elemIndicator);
 
-            QPoint center = QPoint(m_selection.left() - m_buttonExtendedSize,
-                                   m_selection.center().y());
-            QVector<QPoint> positions =
-              verticalPoints(center, addCounter, true);
-            moveButtonsToPoints(positions, elemIndicator);
+        int curY = toolbarY + r * (buttonHeight + gap);
+        for (int i = 0; i < countInRow && buttonIdx < vecLength; ++i) {
+            CaptureToolButton* btn = m_vectorButtons[buttonIdx++];
+            btn->move(startX + i * (buttonWidth + gap), curY);
         }
-        // If there are elements for the next cycle, increase the size of the
-        // base area
-        if (elemIndicator < vecLength && !(m_allSidesBlocked)) {
-            expandSelection();
-        }
-        updateBlockedSides();
     }
 }
 

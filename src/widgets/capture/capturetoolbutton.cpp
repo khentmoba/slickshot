@@ -6,6 +6,7 @@
 #include "tools/toolfactory.h"
 #include "utils/confighandler.h"
 #include "utils/globalvalues.h"
+#include "utils/themeutils.h"
 
 #include <QApplication>
 #include <QIcon>
@@ -47,11 +48,7 @@ void CaptureToolButton::initButton()
     m_tool = ToolFactory().CreateTool(m_buttonType, this);
 
     resize(GlobalValues::buttonBaseSize(), GlobalValues::buttonBaseSize());
-    setMask(QRegion(QRect(-1,
-                          -1,
-                          GlobalValues::buttonBaseSize() + 2,
-                          GlobalValues::buttonBaseSize() + 2),
-                    QRegion::Ellipse));
+    // Modern Windows 11 Fluent rounded-rect style (no circular ellipse mask)
 
     // Set a tooltip showing a shortcut in parentheses (if there is a shortcut)
     QString tooltip = m_tool->description();
@@ -89,7 +86,12 @@ const QList<CaptureTool::Type>& CaptureToolButton::getIterableButtonTypes()
 // get icon returns the icon for the type of button
 QIcon CaptureToolButton::icon() const
 {
-    return m_tool->icon(m_mainColor, true);
+    QColor effectiveBg = m_mainColor.isValid()
+                           ? m_mainColor
+                           : (ThemeUtils::isSystemDarkMode()
+                                ? QColor(32, 32, 32)
+                                : QColor(240, 240, 240));
+    return m_tool->icon(effectiveBg, true);
 }
 
 void CaptureToolButton::mousePressEvent(QMouseEvent* e)

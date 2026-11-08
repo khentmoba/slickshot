@@ -19,6 +19,7 @@
 #include "utils/confighandler.h"
 #include "utils/filenamehandler.h"
 #include "utils/pathinfo.h"
+#include "utils/themeutils.h"
 #include "utils/valuehandler.h"
 
 #if !(defined(Q_OS_MACOS) || defined(Q_OS_WIN))
@@ -193,6 +194,7 @@ void configureApp(bool gui, QTranslator& translator, QTranslator& qtTranslator)
 #else
         QApplication::setStyle(new StyleOverride);
 #endif
+        ThemeUtils::applyApplicationTheme();
     }
 
     auto app = QCoreApplication::instance();
