@@ -16,9 +16,12 @@ bool isSystemDarkMode()
 {
 #if defined(Q_OS_WIN)
     QSettings personalizeSettings(
-      QStringLiteral("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+      QStringLiteral("HKEY_CURRENT_"
+                     "USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Theme"
+                     "s\\Personalize"),
       QSettings::NativeFormat);
-    QVariant appsUseLight = personalizeSettings.value(QStringLiteral("AppsUseLightTheme"));
+    QVariant appsUseLight =
+      personalizeSettings.value(QStringLiteral("AppsUseLightTheme"));
     if (appsUseLight.isValid()) {
         return appsUseLight.toInt() == 0;
     }
@@ -26,7 +29,8 @@ bool isSystemDarkMode()
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     if (QGuiApplication::styleHints()) {
-        return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+        return QGuiApplication::styleHints()->colorScheme() ==
+               Qt::ColorScheme::Dark;
     }
 #endif
 
@@ -65,20 +69,17 @@ QColor toolbarBackgroundColor()
 
 QColor toolbarBorderColor()
 {
-    return isSystemDarkMode() ? QColor(255, 255, 255, 30)
-                              : QColor(0, 0, 0, 20);
+    return isSystemDarkMode() ? QColor(255, 255, 255, 30) : QColor(0, 0, 0, 20);
 }
 
 QColor buttonHoverColor()
 {
-    return isSystemDarkMode() ? QColor(255, 255, 255, 22)
-                              : QColor(0, 0, 0, 16);
+    return isSystemDarkMode() ? QColor(255, 255, 255, 22) : QColor(0, 0, 0, 16);
 }
 
 QColor buttonPressedColor()
 {
-    return isSystemDarkMode() ? QColor(255, 255, 255, 38)
-                              : QColor(0, 0, 0, 28);
+    return isSystemDarkMode() ? QColor(255, 255, 255, 38) : QColor(0, 0, 0, 28);
 }
 
 QColor buttonTextColor()
@@ -95,49 +96,57 @@ QString buttonStyleSheet(const QColor& accentColor)
 {
     const bool dark = isSystemDarkMode();
     const QString textColor = dark ? "#ffffff" : "#1a1a1a";
-    const QString hoverBg = dark ? "rgba(255, 255, 255, 0.10)" : "rgba(0, 0, 0, 0.06)";
-    const QString pressedBg = dark ? "rgba(255, 255, 255, 0.18)" : "rgba(0, 0, 0, 0.12)";
-    const QString activeAccent = accentColor.isValid() ? accentColor.name() : (dark ? "#60cdff" : "#0067c0");
+    const QString hoverBg =
+      dark ? "rgba(255, 255, 255, 0.10)" : "rgba(0, 0, 0, 0.06)";
+    const QString pressedBg =
+      dark ? "rgba(255, 255, 255, 0.18)" : "rgba(0, 0, 0, 0.12)";
+    const QString activeAccent = accentColor.isValid()
+                                   ? accentColor.name()
+                                   : (dark ? "#60cdff" : "#0067c0");
 
-    return QString(
-      "CaptureButton {"
-      "  border: 1px solid transparent;"
-      "  border-radius: 6px;"
-      "  background-color: transparent;"
-      "  color: %1;"
-      "  padding: 4px;"
-      "}"
-      "CaptureToolButton {"
-      "  border: 1px solid transparent;"
-      "  border-radius: 6px;"
-      "  background-color: transparent;"
-      "  padding: 0px;"
-      "}"
-      "CaptureButton:hover, CaptureToolButton:hover {"
-      "  background-color: %2;"
-      "  border: 1px solid %3;"
-      "}"
-      "CaptureButton:pressed, CaptureToolButton:pressed {"
-      "  background-color: %4;"
-      "}"
-      "CaptureToolButton:checked {"
-      "  background-color: %2;"
-      "  border-bottom: 2px solid %5;"
-      "}"
-    ).arg(textColor, hoverBg, dark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)", pressedBg, activeAccent);
+    return QString("CaptureButton {"
+                   "  border: 1px solid transparent;"
+                   "  border-radius: 6px;"
+                   "  background-color: transparent;"
+                   "  color: %1;"
+                   "  padding: 4px;"
+                   "}"
+                   "CaptureToolButton {"
+                   "  border: 1px solid transparent;"
+                   "  border-radius: 6px;"
+                   "  background-color: transparent;"
+                   "  padding: 0px;"
+                   "}"
+                   "CaptureButton:hover, CaptureToolButton:hover {"
+                   "  background-color: %2;"
+                   "  border: 1px solid %3;"
+                   "}"
+                   "CaptureButton:pressed, CaptureToolButton:pressed {"
+                   "  background-color: %4;"
+                   "}"
+                   "CaptureToolButton:checked {"
+                   "  background-color: %2;"
+                   "  border-bottom: 2px solid %5;"
+                   "}")
+      .arg(textColor,
+           hoverBg,
+           dark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)",
+           pressedBg,
+           activeAccent);
 }
 
 QString toolbarContainerStyleSheet()
 {
     const bool dark = isSystemDarkMode();
-    const QString bgColor = dark ? "rgba(32, 32, 32, 0.92)" : "rgba(246, 246, 246, 0.92)";
-    const QString borderColor = dark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.10)";
+    const QString bgColor =
+      dark ? "rgba(32, 32, 32, 0.92)" : "rgba(246, 246, 246, 0.92)";
+    const QString borderColor =
+      dark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.10)";
 
-    return QString(
-      "background-color: %1;"
-      "border: 1px solid %2;"
-      "border-radius: 8px;"
-    ).arg(bgColor, borderColor);
+    return QString("background-color: %1;"
+                   "border: 1px solid %2;"
+                   "border-radius: 8px;")
+      .arg(bgColor, borderColor);
 }
 
 void applyApplicationTheme()
