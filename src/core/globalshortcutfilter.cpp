@@ -5,6 +5,8 @@
 #include "core/flameshot.h"
 #include "utils/confighandler.h"
 
+#include <QApplication>
+
 #if defined(Q_OS_WIN)
 #ifndef NOMINMAX
 #define NOMINMAX
