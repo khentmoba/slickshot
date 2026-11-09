@@ -2,20 +2,8 @@ name: Packaging(MacOS)
 
 on:
   push:
-    branches:
-      - master
-    paths-ignore:
-      - "*.md"
-      - "LICENSE"
-      - "docs/**"
-
-  pull_request:
-    paths-ignore:
-      - "*.md"
-      - "LICENSE"
-      - "docs/**"
-      - "data/translations/*.ts"
-
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 env:

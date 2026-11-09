@@ -2,21 +2,8 @@ name: Packaging(Windows)
 
 on:
   push:
-    branches:
-      - master
-      - fix*
-    paths-ignore:
-      - '*.md'
-      - 'LICENSE'
-      - 'docs/**'
-
-  pull_request:
-    paths-ignore:
-      - '*.md'
-      - 'LICENSE'
-      - 'docs/**'
-      - 'data/translations/*.ts'
-  
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 
