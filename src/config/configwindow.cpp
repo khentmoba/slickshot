@@ -32,11 +32,34 @@ ConfigWindow::ConfigWindow(QWidget* parent)
     auto* layout = new QVBoxLayout(this);
     m_tabWidget = new QTabWidget(this);
     m_tabWidget->tabBar()->setUsesScrollButtons(false);
+
+    QColor background = this->palette().window().color();
+    bool isDark = ColorUtils::colorIsDark(background);
+
+    const QString paneBorder =
+      isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.12)";
+    const QString selectedBg =
+      isDark ? "rgba(56, 189, 248, 0.15)" : "rgba(2, 132, 199, 0.10)";
+    const QString selectedColor = isDark ? "#38bdf8" : "#0284c7";
+    const QString hoverBg =
+      isDark ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.05)";
 #if defined(Q_OS_MACOS)
     // Fix Qt6 macOS bug where tab pane content renders behind the tab bar
-    m_tabWidget->setStyleSheet(
-      "QTabWidget::pane { border-top: 2px solid palette(mid); }");
+    const QString macTopBorder = "border-top: 2px solid palette(mid); ";
+#else
+    const QString macTopBorder = "";
 #endif
+
+    m_tabWidget->setStyleSheet(
+      QStringLiteral(
+        "QTabWidget::pane { border: 1px solid %1; %5border-radius: 8px; }"
+        "QTabBar::tab { padding: 8px 16px; margin: 2px; border-radius: 6px; "
+        "border-bottom: 2px solid transparent; font-weight: 500; }"
+        "QTabBar::tab:selected { background: %2; color: %3; border-bottom: 2px "
+        "solid %3; }"
+        "QTabBar::tab:!selected:hover { background: %4; }")
+        .arg(paneBorder, selectedBg, selectedColor, hoverBg, macTopBorder));
+
     layout->addWidget(m_tabWidget);
 
     setAttribute(Qt::WA_DeleteOnClose);
@@ -48,8 +71,6 @@ ConfigWindow::ConfigWindow(QWidget* parent)
             this,
             &ConfigWindow::updateChildren);
 
-    QColor background = this->palette().window().color();
-    bool isDark = ColorUtils::colorIsDark(background);
     QString modifier =
       isDark ? PathInfo::whiteIconPath() : PathInfo::blackIconPath();
 

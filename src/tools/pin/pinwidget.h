@@ -45,7 +45,7 @@ private:
     QVBoxLayout* m_layout;
     QLabel* m_label;
     QGraphicsDropShadowEffect* m_shadowEffect;
-    QColor m_baseColor, m_hoverColor;
+    QColor m_baseColor;
 
     bool m_expanding{ false };
     qreal m_scaleFactor{ 1 };

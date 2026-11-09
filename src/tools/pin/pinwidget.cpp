@@ -40,15 +40,14 @@ PinWidget::PinWidget(const QPixmap& pixmap,
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_DeleteOnClose);
-    setWindowTitle("flameshot-pin");
+    setWindowTitle("slickshot-pin");
     ConfigHandler conf;
     m_baseColor = conf.uiColor();
-    m_hoverColor = conf.contrastUiColor();
     QString closePinnedCaptureShortcut =
       conf.shortcut("TYPE_CLOSE_ACTIVE_PIN_WINDOW");
     m_layout->setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN);
 
-    m_shadowEffect->setColor(m_baseColor);
+    m_shadowEffect->setColor(QColor(0, 0, 0, 160));
     m_shadowEffect->setBlurRadius(BLUR_RADIUS);
     m_shadowEffect->setOffset(0, 0);
     setGraphicsEffect(m_shadowEffect);
@@ -135,12 +134,12 @@ bool PinWidget::scrollEvent(QWheelEvent* event)
 
 void PinWidget::enterEvent(QEnterEvent*)
 {
-    m_shadowEffect->setColor(m_hoverColor);
+    m_shadowEffect->setColor(m_baseColor);
 }
 
 void PinWidget::leaveEvent(QEvent*)
 {
-    m_shadowEffect->setColor(m_baseColor);
+    m_shadowEffect->setColor(QColor(0, 0, 0, 160));
 }
 
 void PinWidget::mousePressEvent(QMouseEvent* e)

@@ -38,11 +38,11 @@ void NotifierBox::paintEvent(QPaintEvent*)
     if (!painter.isActive()) {
         return;
     }
-    // draw Ellipse
+    // draw Ellipse with subtle glass border
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setBrush(QBrush(m_bgColor, Qt::SolidPattern));
-    painter.setPen(QPen(Qt::transparent));
-    painter.drawEllipse(rect());
+    painter.setPen(QPen(QColor(255, 255, 255, 60), 1));
+    painter.drawEllipse(rect().adjusted(1, 1, -1, -1));
     // Draw the text:
     painter.setPen(QPen(m_foregroundColor));
     painter.drawText(rect(), Qt::AlignCenter, m_message);

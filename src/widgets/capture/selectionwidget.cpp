@@ -387,11 +387,23 @@ void SelectionWidget::paintEvent(QPaintEvent*)
     if (!p.isActive()) {
         return;
     }
-    p.setPen(m_color);
+
+    // Keep AA off for crisp 1px integer pixel alignment without blur
+    p.setRenderHint(QPainter::Antialiasing, false);
+
+    // High-contrast dual stroke: outer dark boundary ensures clear definition
+    // on bright screen content, inner accent stroke pops on dark content
+    p.setPen(QPen(QColor(0, 0, 0, 180), 1));
     p.drawRect(rect() + QMargins(0, 0, -1, -1));
-    p.setRenderHint(QPainter::Antialiasing);
-    p.setBrush(m_color);
+
+    p.setPen(QPen(m_color, 1));
+    p.drawRect(rect().adjusted(1, 1, -2, -2));
+
+    // Antialiasing for smooth circular resize handles
+    p.setRenderHint(QPainter::Antialiasing, true);
     for (auto rectangle : handlerAreas()) {
+        p.setPen(QPen(QColor(0, 0, 0, 160), 1));
+        p.setBrush(m_color);
         p.drawEllipse(rectangle);
     }
 }

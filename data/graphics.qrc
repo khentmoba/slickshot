@@ -1,5 +1,11 @@
 <RCC>
     <qresource prefix="/">
+        <file>img/app/slickshot.svg</file>
+        <file>img/app/slickshot.png</file>
+        <file>img/app/slickshot.monochrome.svg</file>
+        <file>img/app/slickshot.monochrome.png</file>
+        <file>img/app/slickshot.mask.png</file>
+        <file>img/app/slickshot.mask.svg</file>
         <file>img/app/org.flameshot.Flameshot.svg</file>
         <file>img/app/flameshot.svg</file>
         <file>img/app/org.flameshot.Flameshot.png</file>

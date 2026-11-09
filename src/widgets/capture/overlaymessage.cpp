@@ -107,7 +107,7 @@ void OverlayMessage::paintEvent(QPaintEvent* e)
     painter.setPen(QPen(m_textColor, 1.5));
     float margin = painter.pen().widthF();
     painter.drawRoundedRect(
-      rect() - QMarginsF(margin, margin, margin, margin), 5, 5);
+      rect() - QMarginsF(margin, margin, margin, margin), 8, 8);
 
     return QLabel::paintEvent(e);
 }

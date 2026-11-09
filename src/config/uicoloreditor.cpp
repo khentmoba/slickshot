@@ -3,8 +3,10 @@
 
 #include "uicoloreditor.h"
 #include "config/clickablelabel.h"
+#include "utils/colorutils.h"
 #include "utils/confighandler.h"
 #include "utils/globalvalues.h"
+#include "utils/themeutils.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -36,13 +38,37 @@ UIcolorEditor::UIcolorEditor(QWidget* parent)
     updateComponents();
 }
 
+static QString swatchStyle(const QColor& c)
+{
+    const bool dark = ThemeUtils::isSystemDarkMode();
+    const QString border = dark ? QStringLiteral("rgba(255, 255, 255, 0.2)")
+                                : QStringLiteral("rgba(0, 0, 0, 0.15)");
+    const QString hoverBorder = dark
+                                  ? QStringLiteral("rgba(255, 255, 255, 0.5)")
+                                  : QStringLiteral("rgba(0, 0, 0, 0.4)");
+    const QString textColor = ColorUtils::colorIsDark(c)
+                                ? QStringLiteral("#ffffff")
+                                : QStringLiteral("#000000");
+    return QStringLiteral("CaptureToolButton { background-color: %1; color: "
+                          "%4; border: 1px solid "
+                          "%2; border-radius: 6px; padding: 0px; }"
+                          "CaptureToolButton:hover { border: 1px solid %3; }")
+      .arg(c.name(), border, hoverBorder, textColor);
+}
+
 void UIcolorEditor::updateComponents()
 {
     ConfigHandler config;
     m_uiColor = config.uiColor();
     m_contrastColor = config.contrastUiColor();
     m_buttonContrast->setColor(m_contrastColor);
+    m_buttonContrast->setStyleSheet(swatchStyle(m_contrastColor));
+    m_buttonContrast->setIcon(
+      m_buttonContrast->tool()->icon(m_contrastColor, true));
     m_buttonMainColor->setColor(m_uiColor);
+    m_buttonMainColor->setStyleSheet(swatchStyle(m_uiColor));
+    m_buttonMainColor->setIcon(
+      m_buttonMainColor->tool()->icon(m_uiColor, true));
     if (m_lastButtonPressed == m_buttonMainColor) {
         m_colorWheel->setColor(m_uiColor);
     } else {
@@ -70,6 +96,8 @@ void UIcolorEditor::updateLocalColor(const QColor c)
         m_contrastColor = c;
     }
     m_lastButtonPressed->setColor(c);
+    m_lastButtonPressed->setStyleSheet(swatchStyle(c));
+    m_lastButtonPressed->setIcon(m_lastButtonPressed->tool()->icon(c, true));
     m_hexColorEdit->setText(c.name());
 }
 
@@ -200,6 +228,7 @@ void UIcolorEditor::changeLastButton(CaptureToolButton* b)
             m_labelMain->setStyleSheet(offStyle);
             m_hexColorLabel->setText(tr("Hex for Contrast Color"));
         }
-        b->setIcon(b->icon());
+        b->setIcon(b->tool()->icon(
+          b == m_buttonMainColor ? m_uiColor : m_contrastColor, true));
     }
 }

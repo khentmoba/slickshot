@@ -17,7 +17,8 @@ InfoWindow::InfoWindow(QWidget* parent)
     ui->setupUi(this);
     setAttribute(Qt::WA_DeleteOnClose);
 
-    ui->IconSVG->setPixmap(QPixmap(GlobalValues::iconPath()));
+    ui->IconSVG->setPixmap(QIcon(GlobalValues::iconPath())
+                             .pixmap(QSize(64, 64), devicePixelRatioF()));
     ui->VersionDetails->setText(GlobalValues::versionInfo());
     ui->OperatingSystemDetails->setText(generateKernelString());
 
