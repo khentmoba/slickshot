@@ -24,6 +24,24 @@
 
 // HELPER FUNCTIONS
 
+#if defined(Q_OS_WIN)
+namespace {
+
+bool runEntryMatchesCurrentBinary(const QString& val)
+{
+    QString currentPath =
+      QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
+    QString unquoted = val.trimmed();
+    if (unquoted.startsWith('"') && unquoted.endsWith('"') &&
+        unquoted.length() >= 2) {
+        unquoted = unquoted.mid(1, unquoted.length() - 2).trimmed();
+    }
+    return unquoted.compare(currentPath, Qt::CaseInsensitive) == 0;
+}
+
+} // namespace
+#endif
+
 bool verifyLaunchFile()
 {
 #if defined(Q_OS_UNIX)
@@ -36,12 +54,22 @@ bool verifyLaunchFile()
     QSettings bootUpSettings(
       "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
       QSettings::NativeFormat);
-    bool res =
-      bootUpSettings.value("Flameshot").toString() ==
-      QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
+    bool res = runEntryMatchesCurrentBinary(
+      bootUpSettings.value("SlickShot").toString());
 #endif
     return res;
 }
+
+#if defined(Q_OS_WIN)
+bool hasLegacyRunEntry()
+{
+    QSettings bootUpSettings(
+      "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
+      QSettings::NativeFormat);
+    return runEntryMatchesCurrentBinary(
+      bootUpSettings.value("Flameshot").toString());
+}
+#endif
 
 // VALUE HANDLING
 
@@ -87,7 +115,13 @@ static QMap<class QString, QSharedPointer<ValueHandler>>
     OPTION("showMagnifier"               ,Bool               ( false         )),
     OPTION("squareMagnifier"             ,Bool               ( false         )),
     OPTION("autoCloseIdleDaemon"         ,Bool               ( false         )),
+#if defined(Q_OS_WIN)
+    OPTION("startupLaunch"               ,Bool               ( true          )),
+    OPTION("replaceSnippingTool"         ,Bool               ( true          )),
+#else
     OPTION("startupLaunch"               ,Bool               ( false         )),
+    OPTION("replaceSnippingTool"         ,Bool               ( false         )),
+#endif
     OPTION("showStartupLaunchMessage"    ,Bool               ( true          )),
     OPTION("showQuitPrompt"              ,Bool               ( false         )),
     OPTION("copyURLAfterUpload"          ,Bool               ( true          )),
@@ -269,18 +303,38 @@ ConfigHandler* ConfigHandler::getInstance()
 bool ConfigHandler::startupLaunch()
 {
     bool res = value(QStringLiteral("startupLaunch")).toBool();
+#if defined(Q_OS_WIN)
+    if (res != verifyLaunchFile() || hasLegacyRunEntry()) {
+        ensureStartupLaunch(res);
+    }
+#else
     if (res != verifyLaunchFile()) {
         setStartupLaunch(res);
     }
+#endif
     return res;
 }
 
 void ConfigHandler::setStartupLaunch(const bool start)
 {
+#if defined(Q_OS_WIN)
+    if (start == value(QStringLiteral("startupLaunch")).toBool() &&
+        verifyLaunchFile() == start && !hasLegacyRunEntry()) {
+        return;
+    }
+#else
     if (start == value(QStringLiteral("startupLaunch")).toBool()) {
         return;
     }
-    setValue(QStringLiteral("startupLaunch"), start);
+#endif
+    ensureStartupLaunch(start);
+}
+
+void ConfigHandler::ensureStartupLaunch(const bool start)
+{
+    if (start != value(QStringLiteral("startupLaunch")).toBool()) {
+        setValue(QStringLiteral("startupLaunch"), start);
+    }
 #if defined(Q_OS_MACOS)
     /* TODO - there should be more correct way via API, but didn't find it
      without extra dependencies, there should be something like that:
@@ -338,18 +392,26 @@ void ConfigHandler::setStartupLaunch(const bool start)
       "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App "
       "Paths",
       QSettings::NativeFormat);
+    // remove legacy entry if it points to this binary to avoid duplicate
+    // process launch
+    if (hasLegacyRunEntry()) {
+        bootUpSettings.remove("Flameshot");
+    }
+
     if (start) {
         QString app_path =
           QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
-        bootUpSettings.setValue("Flameshot", app_path);
+        if (!app_path.isEmpty()) {
+            QString quotedPath = QStringLiteral("\"%1\"").arg(app_path);
+            bootUpSettings.setValue("SlickShot", quotedPath);
 
-        // set application workdir
-        bootUpPath.beginGroup("flameshot.exe");
-        bootUpPath.setValue("Path", QCoreApplication::applicationDirPath());
-        bootUpPath.endGroup();
-
+            // set application workdir
+            bootUpPath.beginGroup("flameshot.exe");
+            bootUpPath.setValue("Path", QCoreApplication::applicationDirPath());
+            bootUpPath.endGroup();
+        }
     } else {
-        bootUpSettings.remove("Flameshot");
+        bootUpSettings.remove("SlickShot");
 
         // remove application workdir
         bootUpPath.beginGroup("flameshot.exe");

@@ -19,6 +19,7 @@
 #include "utils/confighandler.h"
 #include "utils/filenamehandler.h"
 #include "utils/pathinfo.h"
+#include "utils/snippingtoolmanager.h"
 #include "utils/themeutils.h"
 #include "utils/valuehandler.h"
 
@@ -242,11 +243,22 @@ int main(int argc, char* argv[])
 
         if (!kdsa.isPrimaryInstance() &&
             !ConfigHandler().allowMultipleGuiInstances()) {
+#if defined(Q_OS_WIN)
+            // Trigger capture in running primary instance instead of silently
+            // quitting
+            QByteArray data;
+            QDataStream stream(&data, QIODevice::WriteOnly);
+            stream << QStringLiteral("requestCapture");
+            kdsa.sendMessage(data);
+#endif
             return 0; // Quit
         }
 #endif
 
         configureApp(true, translator, qtTranslator);
+#if defined(Q_OS_WIN)
+        SnippingToolManager::autoConfigureOnStartup();
+#endif
         auto c = Flameshot::instance();
         FlameshotDaemon::start();
 
@@ -277,6 +289,49 @@ int main(int argc, char* argv[])
     /*--------------|
      * CLI parsing  |
      * ------------*/
+#if defined(Q_OS_WIN)
+    // Handle Windows Snipping Tool protocol (ms-screenclip) and /clip command
+    bool isScreenclipUri = false;
+    for (int i = 1; i < argc; ++i) {
+        QString arg = QString::fromLocal8Bit(argv[i]);
+        if (arg.startsWith(QLatin1String("ms-screenclip"),
+                           Qt::CaseInsensitive) ||
+            arg.compare(QLatin1String("/clip"), Qt::CaseInsensitive) == 0) {
+            isScreenclipUri = true;
+            break;
+        }
+    }
+
+    if (isScreenclipUri) {
+        new QApplication(argc, argv);
+        configureApp(true, translator, qtTranslator);
+#if defined(Q_OS_WIN)
+        SnippingToolManager::autoConfigureOnStartup();
+#endif
+        Flameshot::setOrigin(Flameshot::CLI);
+
+        if (!ConfigHandler().allowMultipleGuiInstances()) {
+            auto* mutex = guiMutexLock();
+            if (!mutex) {
+                return 1;
+            }
+            QObject::connect(
+              qApp, &QCoreApplication::aboutToQuit, qApp, [mutex]() {
+                  mutex->detach();
+                  delete mutex;
+              });
+        }
+
+        CaptureRequest req(CaptureRequest::GRAPHICAL_MODE);
+        if (ConfigHandler().saveLastRegion()) {
+            req.setInitialSelection(getLastRegion());
+        }
+        int guiExitCode = requestCaptureAndWait(req);
+        delete qApp;
+        return guiExitCode;
+    }
+#endif
+
     new QCoreApplication(argc, argv);
     configureApp(false, translator, qtTranslator);
 

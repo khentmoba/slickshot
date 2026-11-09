@@ -151,6 +151,7 @@ public:
     CONFIG_GETTER_SETTER(ignorePrntScrForcesSnipping,
                          setIgnorePrntScrForcesSnipping,
                          bool)
+    CONFIG_GETTER_SETTER(replaceSnippingTool, setReplaceSnippingTool, bool)
 #endif
 #if !defined(Q_OS_MACOS)
     CONFIG_GETTER_SETTER(captureActiveMonitor, setCaptureActiveMonitor, bool)
@@ -164,6 +165,7 @@ public:
     // SPECIAL CASES
     bool startupLaunch();
     void setStartupLaunch(const bool);
+    void ensureStartupLaunch(const bool);
     void setAllTheButtons();
     void setToolSize(CaptureTool::Type toolType, int size);
     int toolSize(CaptureTool::Type toolType);
