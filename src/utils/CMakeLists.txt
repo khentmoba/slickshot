@@ -7,6 +7,7 @@ target_sources(
           systemnotification.h
           valuehandler.h
           themeutils.h
+          snippingtoolmanager.h
           strfparse.h
 )
 
@@ -26,6 +27,7 @@ target_sources(
           pathinfo.cpp
           colorutils.cpp
           themeutils.cpp
+          snippingtoolmanager.cpp
           history.cpp
           strfparse.cpp
 )

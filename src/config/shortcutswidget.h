@@ -43,14 +43,7 @@ private:
     void appendShortcut(const QString& shortcutName,
                         const QString& description);
 #if defined(Q_OS_WIN)
-    void checkPrintScreenForcesSnipping();
-    bool isPrintScreenKeyForSnippingDisabled();
-    bool disablePrintScreenKeyForSnipping();
-
-    void initMsScreenclipCheckbox();
-    bool isMsScreenclipRegistered();
-    bool registerMsScreenclip();
-    bool unregisterMsScreenclip();
-    QCheckBox* m_registerMsScreenclip;
+    void initReplaceSnippingToolCheckbox();
+    QCheckBox* m_replaceSnippingToolCheckbox = nullptr;
 #endif
 };

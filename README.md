@@ -218,7 +218,11 @@ These shortcuts are available in GUI mode:
 
 ### Global
 
-- Windows: <kbd>Prt Sc</kbd> (fixed, cannot be changed) and <kbd>Win</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd> (can be changed in the settings)
+- Windows: Seamlessly replaces Windows Snipping Tool out of the box!
+  - <kbd>Win</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>: Direct capture overlay (intercepted via low-level hook)
+  - <kbd>Prt Sc</kbd>: Direct capture overlay (Windows 11 Snipping Tool hijacking disabled)
+  - <kbd>Shift</kbd> + <kbd>Prt Sc</kbd>: Capture history / full capture
+  - Windows screen clipping protocol (`ms-screenclip:`), Action Center "Screen Snip", and `SnippingTool.exe` redirection
 - macOS: <kbd>cmd</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd> (can be changed in the settings)
 - Linux: Flameshot doesn't yet support <kbd>Prt Sc</kbd> out of the box, but you can set this up with a bit of configuration:
 
@@ -375,6 +379,14 @@ After following all those steps above, `flameshot` will open without problems in
 ### Windows
 
 - [Scoop](https://github.com/ScoopInstaller/Extras/blob/master/bucket/flameshot.json): `scoop install flameshot`
+
+When downloaded on Windows (via installer or portable package), SlickShot automatically replaces the default Windows Snipping Tool:
+- Intercepts **<kbd>Win</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>** and **<kbd>Prt Sc</kbd>** via system-level low-level hooks for instant capture.
+- Registers SlickShot capabilities and protocol handlers for screen clipping.
+- Redirects `SnippingTool.exe` so command or Run dialog launches open SlickShot.
+- Automatically launches in the background on startup for instant activation.
+
+Can be toggled anytime in SlickShot Settings under **Shortcuts** -> **Replace Windows Snipping Tool**.
 
 <details>
   <summary>Expand this section to see what distros are using an up to date version of flameshot</summary>

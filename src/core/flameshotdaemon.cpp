@@ -527,6 +527,10 @@ void FlameshotDaemon::messageReceivedFromSecondaryInstance(
             qWarning() << "Received \"attachTextToClipboard\" from second "
                           "instance, but text is empty!";
         }
+    } else if (methodCall == QStringLiteral("requestCapture") ||
+               methodCall == QStringLiteral("gui")) {
+        Flameshot::instance()->requestCapture(
+          CaptureRequest(CaptureRequest::GRAPHICAL_MODE));
     } else {
         qWarning() << "Received unknown message from second instance:"
                    << message;
