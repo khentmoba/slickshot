@@ -31,7 +31,7 @@ hl.window_rule({
     move    = { 0, 0 },
 })
 hl.window_rule({
-    match = { class = "flameshot", title = "flameshot-pin" },
+    match = { class = "flameshot", title = "slickshot-pin" },
     move  = { "cursor_x-(window_w*0.5)", "cursor_y-(window_h*0.5)" },
 })
 ```

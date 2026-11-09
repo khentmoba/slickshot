@@ -34,9 +34,9 @@ void CaptureButton::init()
     setFocusPolicy(Qt::NoFocus);
 
     auto* dsEffect = new QGraphicsDropShadowEffect(this);
-    dsEffect->setBlurRadius(5);
-    dsEffect->setOffset(0);
-    dsEffect->setColor(QColor(Qt::black));
+    dsEffect->setBlurRadius(10);
+    dsEffect->setOffset(0, 3);
+    dsEffect->setColor(QColor(0, 0, 0, 150));
 
     setGraphicsEffect(dsEffect);
 }

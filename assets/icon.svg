@@ -1,4 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#7c3aed"/>
-  <text x="32" y="32" dy="0.35em" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="32" font-weight="600" fill="#ffffff">S</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Clean Minimal Black Squircle Base with Subtle Glass Rim -->
+  <rect x="32" y="32" width="448" height="448" rx="112" fill="#000000" stroke="#ffffff" stroke-opacity="0.16" stroke-width="2"/>
+
+  <!-- Two Crossing Kinetic Precision Shears -->
+  <g fill="#ffffff">
+    <!-- Blade 1: Top-Right to Bottom-Left -->
+    <path d="M 364 120
+             C 380 136 380 162 364 178
+             L 178 364
+             C 162 380 136 380 120 364
+             C 104 348 104 322 120 306
+             L 306 120
+             C 322 104 348 104 364 120 Z"/>
+
+    <!-- Blade 2: Top-Left to Bottom-Right -->
+    <path d="M 148 120
+             C 164 104 190 104 206 120
+             L 392 306
+             C 408 322 408 348 392 364
+             C 376 380 350 380 334 364
+             L 148 178
+             C 132 162 132 136 148 120 Z"/>
+  </g>
+
+  <!-- Center Pivot / Optical Aperture Core -->
+  <circle cx="256" cy="256" r="44" fill="#000000"/>
+  <circle cx="256" cy="256" r="24" fill="#ffffff"/>
 </svg>

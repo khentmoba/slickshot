@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <clipPath id="tray-clip" clipPathUnits="userSpaceOnUse">
+      <path clip-rule="evenodd" fill-rule="evenodd" d="M 0 0 H 512 V 512 H 0 Z M 256 208 A 48 48 0 1 0 256 304 A 48 48 0 1 0 256 208 Z"/>
+    </clipPath>
+  </defs>
+  <g fill="#ffffff" clip-path="url(#tray-clip)">
+    <path d="M 384 96 C 404 116 404 148 384 168 L 168 384 C 148 404 116 404 96 384 C 76 364 76 332 96 312 L 312 96 C 332 76 364 76 384 96 Z"/>
+    <path d="M 128 96 C 148 76 180 76 200 96 L 416 312 C 436 332 436 364 416 384 C 396 404 364 404 344 384 L 128 168 C 108 148 108 116 128 96 Z"/>
+  </g>
+  <circle cx="256" cy="256" r="24" fill="#ffffff"/>
+</svg>

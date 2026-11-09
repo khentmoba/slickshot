@@ -546,7 +546,7 @@ cmake --install "$BUILD_DIR"
 ## License
 
 - The main code is licensed under [GPLv3+](LICENSE)
-- The logo of Flameshot is licensed under [Free Art License v1.3](data/img/app/flameshotLogoLicense.txt)
+- The SlickShot logo and branding assets are licensed under [GPLv3+](LICENSE)
 - The button icons are licensed under Apache License 2.0. See: https://github.com/google/material-design-icons
 - The code at capture/capturewidget.cpp is based on https://github.com/ckaiser/Lightscreen/blob/master/dialogs/areadialog.cpp (GPLv2)
 - The code at capture/capturewidget.h is based on https://github.com/ckaiser/Lightscreen/blob/master/dialogs/areadialog.h (GPLv2)

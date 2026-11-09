@@ -6,7 +6,6 @@
 #include "tools/toolfactory.h"
 #include "utils/confighandler.h"
 #include "utils/globalvalues.h"
-#include "utils/themeutils.h"
 
 #include <QApplication>
 #include <QIcon>
@@ -86,11 +85,9 @@ const QList<CaptureTool::Type>& CaptureToolButton::getIterableButtonTypes()
 // get icon returns the icon for the type of button
 QIcon CaptureToolButton::icon() const
 {
-    QColor effectiveBg = m_mainColor.isValid() ? m_mainColor
-                                               : (ThemeUtils::isSystemDarkMode()
-                                                    ? QColor(32, 32, 32)
-                                                    : QColor(240, 240, 240));
-    return m_tool->icon(effectiveBg, true);
+    // The capture toolbar floats over the dark capture overlay,
+    // so toolbar tool glyphs must always use the white icon set.
+    return m_tool->icon(QColor(0, 0, 0), true);
 }
 
 void CaptureToolButton::mousePressEvent(QMouseEvent* e)
@@ -124,12 +121,9 @@ CaptureTool* CaptureToolButton::tool() const
 
 void CaptureToolButton::setColor(const QColor& c)
 {
-    m_mainColor = c;
     CaptureButton::setColor(c);
     updateIcon();
 }
-
-QColor CaptureToolButton::m_mainColor;
 
 static std::map<CaptureTool::Type, int> buttonTypeOrder
 {
