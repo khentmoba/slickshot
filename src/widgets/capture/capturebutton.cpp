@@ -43,7 +43,7 @@ void CaptureButton::init()
 
 QString CaptureButton::globalStyleSheet()
 {
-    return CaptureButton(nullptr).styleSheet();
+    return ThemeUtils::buttonStyleSheet();
 }
 
 QString CaptureButton::styleSheet() const
@@ -56,5 +56,3 @@ void CaptureButton::setColor(const QColor& c)
     m_mainColor = c;
     setStyleSheet(styleSheet());
 }
-
-QColor CaptureButton::m_mainColor;

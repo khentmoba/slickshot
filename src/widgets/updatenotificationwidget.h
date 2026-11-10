@@ -22,9 +22,13 @@ public:
     explicit UpdateNotificationWidget(QWidget* parent,
                                       const AppUpdateInfo& info);
     void setAppLatestVersion(const QString& latestVersion);
+    void setUpdateInfo(const AppUpdateInfo& info);
 
     void hide();
     void show();
+
+private:
+    void initInternalPanel();
 
 public slots:
     void ignoreButton();
@@ -32,8 +36,6 @@ public slots:
     void updateButton();
 
 private:
-    void initInternalPanel();
-
     // class members
     AppUpdateInfo m_info;
     QVBoxLayout* m_layout;

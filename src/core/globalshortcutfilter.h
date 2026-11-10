@@ -28,6 +28,7 @@ public:
 
 private:
 #if defined(Q_OS_WIN)
+    void syncHotkeys();
     static LRESULT CALLBACK lowLevelKeyboardProc(int nCode,
                                                  WPARAM wParam,
                                                  LPARAM lParam);
@@ -37,8 +38,4 @@ private:
     static bool s_prntScrConsumed;
     static bool s_replaceSnippingTool;
 #endif
-    quint32 getNativeModifier(Qt::KeyboardModifiers modifiers);
-    quint32 nativeKeycode(Qt::Key key);
-    bool registerShortcut(quint32 nativeKey, quint32 nativeMods);
-    bool unregisterShortcut(quint32 nativeKey, quint32 nativeMods);
 };

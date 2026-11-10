@@ -100,9 +100,21 @@ QString buttonStyleSheet(const QColor& accentColor)
       dark ? "rgba(255, 255, 255, 0.10)" : "rgba(0, 0, 0, 0.06)";
     const QString pressedBg =
       dark ? "rgba(255, 255, 255, 0.18)" : "rgba(0, 0, 0, 0.12)";
-    const QString activeAccent = accentColor.isValid()
-                                   ? accentColor.name()
-                                   : (dark ? "#60cdff" : "#0067c0");
+    const QColor resolvedAccent =
+      accentColor.isValid()
+        ? accentColor
+        : (dark ? QColor(96, 205, 255) : QColor(0, 103, 192));
+    const QString activeAccent = resolvedAccent.name();
+    const QString checkedBg = QStringLiteral("rgba(%1, %2, %3, %4)")
+                                .arg(resolvedAccent.red())
+                                .arg(resolvedAccent.green())
+                                .arg(resolvedAccent.blue())
+                                .arg(dark ? "0.24" : "0.16");
+    const QString checkedBorder = QStringLiteral("rgba(%1, %2, %3, %4)")
+                                    .arg(resolvedAccent.red())
+                                    .arg(resolvedAccent.green())
+                                    .arg(resolvedAccent.blue())
+                                    .arg(dark ? "0.55" : "0.45");
 
     return QString("CaptureButton {"
                    "  border: 1px solid transparent;"
@@ -125,13 +137,16 @@ QString buttonStyleSheet(const QColor& accentColor)
                    "  background-color: %4;"
                    "}"
                    "CaptureToolButton:checked {"
-                   "  background-color: %2;"
-                   "  border-bottom: 2px solid %5;"
+                   "  background-color: %5;"
+                   "  border: 1px solid %6;"
+                   "  border-bottom: 2px solid %7;"
                    "}")
       .arg(textColor,
            hoverBg,
            dark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)",
            pressedBg,
+           checkedBg,
+           checkedBorder,
            activeAccent);
 }
 
@@ -141,11 +156,13 @@ QString toolbarContainerStyleSheet()
     const QString bgColor =
       dark ? "rgba(32, 32, 32, 0.92)" : "rgba(246, 246, 246, 0.92)";
     const QString borderColor =
-      dark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.10)";
+      dark ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.12)";
 
-    return QString("background-color: %1;"
-                   "border: 1px solid %2;"
-                   "border-radius: 8px;")
+    return QString("QFrame#slickshotToolbar {"
+                   "  background-color: %1;"
+                   "  border: 1px solid %2;"
+                   "  border-radius: 10px;"
+                   "}")
       .arg(bgColor, borderColor);
 }
 

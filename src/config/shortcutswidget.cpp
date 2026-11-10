@@ -49,8 +49,6 @@ ShortcutsWidget::ShortcutsWidget(QWidget* parent)
             &ConfigHandler::fileChanged,
             this,
             &ShortcutsWidget::populateInfoTable);
-
-    show();
 }
 
 void ShortcutsWidget::initInfoTable()

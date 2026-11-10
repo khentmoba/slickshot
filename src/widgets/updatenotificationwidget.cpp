@@ -33,15 +33,16 @@ UpdateNotificationWidget::UpdateNotificationWidget(QWidget* parent,
     m_hideAnimation->setEasingCurve(QEasingCurve::InOutQuad);
     m_hideAnimation->setDuration(300);
 
-    connect(m_hideAnimation,
-            &QPropertyAnimation::finished,
-            m_internalPanel,
-            &QWidget::hide);
+    connect(m_hideAnimation, &QPropertyAnimation::finished, this, [this]() {
+        m_internalPanel->hide();
+        QWidget::hide();
+    });
     setAppLatestVersion(info.version);
 }
 
 void UpdateNotificationWidget::show()
 {
+    m_hideAnimation->stop();
     setAttribute(Qt::WA_TransparentForMouseEvents, false);
     m_showAnimation->setStartValue(QRect(0, -height(), width(), height()));
     m_showAnimation->setEndValue(QRect(0, 0, width(), height()));
@@ -52,22 +53,27 @@ void UpdateNotificationWidget::show()
 
 void UpdateNotificationWidget::hide()
 {
+    m_showAnimation->stop();
     setAttribute(Qt::WA_TransparentForMouseEvents);
-    m_hideAnimation->setStartValue(QRect(0, 0, width(), height()));
-    m_hideAnimation->setEndValue(QRect(0, -height(), 0, height()));
+    m_hideAnimation->setStartValue(m_internalPanel->geometry());
+    m_hideAnimation->setEndValue(QRect(0, -height(), width(), height()));
     m_hideAnimation->start();
-    m_internalPanel->hide();
-    QWidget::hide();
     if (parentWidget() && parentWidget()->isVisible()) {
         parentWidget()->setFocus(Qt::OtherFocusReason);
     }
+}
+
+void UpdateNotificationWidget::setUpdateInfo(const AppUpdateInfo& info)
+{
+    m_info = info;
+    setAppLatestVersion(info.version);
 }
 
 void UpdateNotificationWidget::setAppLatestVersion(const QString& latestVersion)
 {
     m_info.version = latestVersion;
     QString newVersion =
-      tr("New Flameshot version %1 is available").arg(latestVersion);
+      tr("New SlickShot version %1 is available").arg(latestVersion);
     m_notification->setText(newVersion);
 }
 

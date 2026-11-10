@@ -3,7 +3,10 @@
 
 #include "buttonhandler.h"
 #include "utils/globalvalues.h"
+#include "utils/themeutils.h"
 
+#include <QFrame>
+#include <QGraphicsDropShadowEffect>
 #include <QPoint>
 #include <QScreen>
 
@@ -26,6 +29,9 @@ ButtonHandler::ButtonHandler(QObject* parent)
 
 void ButtonHandler::hide()
 {
+    if (m_toolbarBackdrop) {
+        m_toolbarBackdrop->hide();
+    }
     for (CaptureToolButton* b : m_vectorButtons) {
         b->hide();
     }
@@ -35,6 +41,11 @@ void ButtonHandler::show()
 {
     if (m_vectorButtons.isEmpty() || m_vectorButtons.first()->isVisible()) {
         return;
+    }
+    if (m_toolbarBackdrop) {
+        m_toolbarBackdrop->setGeometry(m_toolbarRect);
+        m_toolbarBackdrop->show();
+        m_toolbarBackdrop->stackUnder(m_vectorButtons.first());
     }
     for (CaptureToolButton* b : m_vectorButtons) {
         b->animatedShow();
@@ -88,10 +99,11 @@ void ButtonHandler::updatePosition(const QRect& selection)
         screenBounds = m_screenRegions.first();
     }
 
-    const int buttonWidth = m_buttonExtendedSize;
+    const int buttonWidth = m_buttonBaseSize;
     const int buttonHeight = m_buttonBaseSize;
-    const int gap = m_separator;
-    const int margin = m_separator * 2;
+    const int gap = qMax(4, m_separator / 2);
+    const int backdropPad = qMax(6, m_separator / 2 + 2);
+    const int margin = backdropPad + 4;
 
     // Calculate how many buttons can fit in a horizontal toolbar row
     int maxAvailableWidth = screenBounds.isValid()
@@ -122,12 +134,13 @@ void ButtonHandler::updatePosition(const QRect& selection)
     } else {
         // Dock inside selection near the bottom
         toolbarY = m_selection.bottom() - margin - totalToolbarHeight;
-        if (toolbarY < m_selection.top()) {
+        if (toolbarY < m_selection.top() + margin) {
             toolbarY = m_selection.top() + margin;
         }
         m_buttonsAreInside = true;
     }
 
+    QRect buttonsBounds;
     int buttonIdx = 0;
     for (int r = 0; r < rows && buttonIdx < vecLength; ++r) {
         int countInRow = qMin(buttonsPerRow, vecLength - buttonIdx);
@@ -147,9 +160,18 @@ void ButtonHandler::updatePosition(const QRect& selection)
 
         int curY = toolbarY + r * (buttonHeight + gap);
         for (int i = 0; i < countInRow && buttonIdx < vecLength; ++i) {
+            const int x = startX + i * (buttonWidth + gap);
             CaptureToolButton* btn = m_vectorButtons[buttonIdx++];
-            btn->move(startX + i * (buttonWidth + gap), curY);
+            btn->move(x, curY);
+            buttonsBounds =
+              buttonsBounds.united(QRect(x, curY, buttonWidth, buttonHeight));
         }
+    }
+
+    m_toolbarRect = buttonsBounds.adjusted(
+      -backdropPad, -backdropPad, backdropPad, backdropPad);
+    if (m_toolbarBackdrop) {
+        m_toolbarBackdrop->setGeometry(m_toolbarRect);
     }
 }
 
@@ -352,6 +374,24 @@ void ButtonHandler::setButtons(const QVector<CaptureToolButton*>& v)
     m_vectorButtons = v;
     m_buttonBaseSize = GlobalValues::buttonBaseSize();
     m_buttonExtendedSize = m_buttonBaseSize + m_separator;
+
+    if (QWidget* parentWidget = v.first()->parentWidget()) {
+        if (!m_toolbarBackdrop) {
+            m_toolbarBackdrop = new QFrame(parentWidget);
+            m_toolbarBackdrop->setObjectName(
+              QStringLiteral("slickshotToolbar"));
+            m_toolbarBackdrop->setAttribute(Qt::WA_NoMousePropagation);
+            auto* shadow = new QGraphicsDropShadowEffect(m_toolbarBackdrop);
+            shadow->setBlurRadius(16);
+            shadow->setOffset(0, 4);
+            shadow->setColor(QColor(0, 0, 0, 120));
+            m_toolbarBackdrop->setGraphicsEffect(shadow);
+            m_toolbarBackdrop->hide();
+        }
+        m_toolbarBackdrop->setStyleSheet(
+          ThemeUtils::toolbarContainerStyleSheet());
+        m_toolbarBackdrop->stackUnder(v.first());
+    }
 }
 
 bool ButtonHandler::contains(const QPoint& p) const
@@ -359,15 +399,15 @@ bool ButtonHandler::contains(const QPoint& p) const
     if (m_vectorButtons.isEmpty()) {
         return false;
     }
-    QPoint first(m_vectorButtons.first()->pos());
-    QPoint last(m_vectorButtons.last()->pos());
-    bool firstIsTopLeft = (first.x() <= last.x() && first.y() <= last.y());
-    QPoint topLeft = firstIsTopLeft ? first : last;
-    QPoint bottonRight = firstIsTopLeft ? last : first;
-    topLeft += QPoint(-m_separator, -m_separator);
-    bottonRight += QPoint(m_buttonExtendedSize, m_buttonExtendedSize);
-    QRegion r(QRect(topLeft, bottonRight).normalized());
-    return r.contains(p);
+    if (m_toolbarRect.isValid()) {
+        return m_toolbarRect.contains(p);
+    }
+    QRect bounds;
+    for (const CaptureToolButton* b : m_vectorButtons) {
+        bounds = bounds.united(b->geometry());
+    }
+    return bounds.adjusted(-m_separator, -m_separator, m_separator, m_separator)
+      .contains(p);
 }
 
 void ButtonHandler::updateScreenRegions(const QVector<QRect>& rects)

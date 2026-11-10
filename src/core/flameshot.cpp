@@ -82,6 +82,7 @@ void raiseAboveMenuBar(QWidget* widget)
 #include <QBuffer>
 #include <QDebug>
 #include <QDesktopServices>
+#include <QEventLoop>
 #include <QFile>
 #include <QMessageBox>
 #include <QThread>
@@ -163,26 +164,32 @@ CaptureWidget* Flameshot::gui(const CaptureRequest& req)
 #endif
 
     if (nullptr == m_captureWindow) {
-        // TODO is this unnecessary now?
-        int timeout = 5000; // 5 seconds
-        const int delay = 100;
+        if (m_guiOpening) {
+            emit captureFailed();
+            return nullptr;
+        }
+        m_guiOpening = true;
+        // Close any lingering modal widgets without blocking the UI thread
         QWidget* modalWidget = nullptr;
-        for (; timeout >= 0; timeout -= delay) {
+        for (int attempt = 0; attempt < 25; ++attempt) {
             modalWidget = qApp->activeModalWidget();
             if (nullptr == modalWidget) {
                 break;
             }
             modalWidget->close();
             modalWidget->deleteLater();
-            QThread::msleep(delay);
+            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents,
+                                            20);
         }
-        if (0 == timeout) {
+        if (qApp->activeModalWidget() != nullptr) {
+            m_guiOpening = false;
             QMessageBox::warning(
               nullptr, tr("Error"), tr("Unable to close active modal widgets"));
             return nullptr;
         }
 
         m_captureWindow = new CaptureWidget(request);
+        m_guiOpening = false;
 
 #ifdef Q_OS_WIN
         m_captureWindow->show();
@@ -199,6 +206,12 @@ CaptureWidget* Flameshot::gui(const CaptureRequest& req)
 #else
         m_captureWindow->showFullScreen();
 //        m_captureWindow->show(); // For CaptureWidget Debugging under Linux
+#endif
+#if !defined(DISABLE_UPDATE_CHECKER)
+        if (FlameshotDaemon::instance()) {
+            FlameshotDaemon::instance()->showUpdateNotificationIfAvailable(
+              m_captureWindow);
+        }
 #endif
         return m_captureWindow;
     } else {
