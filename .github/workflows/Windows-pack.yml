@@ -172,8 +172,10 @@ jobs:
         if:  matrix.type == 'portable'
         shell: bash
         run: |
-          sha256sum $GITHUB_WORKSPACE/build/Package/portable/SlickShot-${{ env.VERSION }}-${{ matrix.config.pak_arch }}.zip
-          sha256sum $GITHUB_WORKSPACE/build/Package/portable/SlickShot-${{ env.VERSION }}-${{ matrix.config.pak_arch }}.zip > $GITHUB_WORKSPACE/build/Package/portable/SlickShot-${{ env.VERSION }}-${{ matrix.config.pak_arch }}.zip.sha256sum
+          cd $GITHUB_WORKSPACE/build/Package/portable
+          f=SlickShot-${{ env.VERSION }}-${{ matrix.config.pak_arch }}.zip
+          sha256sum "$f" > "$f.sha256sum"
+          cat "$f.sha256sum"
 
       - name: Artifact Upload
         if:  matrix.type == 'installer'
