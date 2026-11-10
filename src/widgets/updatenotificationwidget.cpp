@@ -58,6 +58,9 @@ void UpdateNotificationWidget::hide()
     m_hideAnimation->start();
     m_internalPanel->hide();
     QWidget::hide();
+    if (parentWidget() && parentWidget()->isVisible()) {
+        parentWidget()->setFocus(Qt::OtherFocusReason);
+    }
 }
 
 void UpdateNotificationWidget::setAppLatestVersion(const QString& latestVersion)
@@ -123,6 +126,7 @@ void UpdateNotificationWidget::initInternalPanel()
 
     // ignore
     auto* ignoreBtn = new QPushButton(tr("Ignore"), this);
+    ignoreBtn->setFocusPolicy(Qt::NoFocus);
     buttonsLayout->addWidget(ignoreBtn);
     connect(ignoreBtn,
             &QPushButton::clicked,
@@ -131,6 +135,7 @@ void UpdateNotificationWidget::initInternalPanel()
 
     // later
     auto* laterBtn = new QPushButton(tr("Later"), this);
+    laterBtn->setFocusPolicy(Qt::NoFocus);
     buttonsLayout->addWidget(laterBtn);
     connect(laterBtn,
             &QPushButton::clicked,
@@ -139,6 +144,7 @@ void UpdateNotificationWidget::initInternalPanel()
 
     // update
     auto* updateBtn = new QPushButton(tr("Update"), this);
+    updateBtn->setFocusPolicy(Qt::NoFocus);
     buttonsLayout->addWidget(updateBtn);
     connect(updateBtn,
             &QPushButton::clicked,

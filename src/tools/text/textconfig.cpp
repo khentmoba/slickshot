@@ -24,6 +24,7 @@ TextConfig::TextConfig(QWidget* parent)
   , m_rightAlignButton(nullptr)
 {
 
+    m_fontsCB->setFocusPolicy(Qt::NoFocus);
     connect(m_fontsCB,
             &QComboBox::currentTextChanged,
             this,
@@ -38,6 +39,7 @@ TextConfig::TextConfig(QWidget* parent)
     m_strikeOutButton = new QPushButton(
       QIcon(iconPrefix + "format_strikethrough.svg"), QLatin1String(""));
     m_strikeOutButton->setCheckable(true);
+    m_strikeOutButton->setFocusPolicy(Qt::NoFocus);
     connect(m_strikeOutButton,
             &QPushButton::clicked,
             this,
@@ -47,6 +49,7 @@ TextConfig::TextConfig(QWidget* parent)
     m_underlineButton = new QPushButton(
       QIcon(iconPrefix + "format_underlined.svg"), QLatin1String(""));
     m_underlineButton->setCheckable(true);
+    m_underlineButton->setFocusPolicy(Qt::NoFocus);
     connect(m_underlineButton,
             &QPushButton::clicked,
             this,
@@ -56,6 +59,7 @@ TextConfig::TextConfig(QWidget* parent)
     m_weightButton =
       new QPushButton(QIcon(iconPrefix + "format_bold.svg"), QLatin1String(""));
     m_weightButton->setCheckable(true);
+    m_weightButton->setFocusPolicy(Qt::NoFocus);
     connect(m_weightButton,
             &QPushButton::clicked,
             this,
@@ -65,6 +69,7 @@ TextConfig::TextConfig(QWidget* parent)
     m_italicButton = new QPushButton(QIcon(iconPrefix + "format_italic.svg"),
                                      QLatin1String(""));
     m_italicButton->setCheckable(true);
+    m_italicButton->setFocusPolicy(Qt::NoFocus);
     connect(m_italicButton,
             &QPushButton::clicked,
             this,
@@ -76,6 +81,7 @@ TextConfig::TextConfig(QWidget* parent)
       new QPushButton(QIcon(iconPrefix + "leftalign.svg"), QLatin1String(""));
     m_leftAlignButton->setCheckable(true);
     m_leftAlignButton->setAutoExclusive(true);
+    m_leftAlignButton->setFocusPolicy(Qt::NoFocus);
     connect(m_leftAlignButton, &QPushButton::clicked, this, [this] {
         emit alignmentChanged(Qt::AlignLeft);
     });
@@ -85,6 +91,7 @@ TextConfig::TextConfig(QWidget* parent)
       new QPushButton(QIcon(iconPrefix + "centeralign.svg"), QLatin1String(""));
     m_centerAlignButton->setCheckable(true);
     m_centerAlignButton->setAutoExclusive(true);
+    m_centerAlignButton->setFocusPolicy(Qt::NoFocus);
     connect(m_centerAlignButton, &QPushButton::clicked, this, [this] {
         emit alignmentChanged(Qt::AlignCenter);
     });
@@ -94,6 +101,7 @@ TextConfig::TextConfig(QWidget* parent)
       new QPushButton(QIcon(iconPrefix + "rightalign.svg"), QLatin1String(""));
     m_rightAlignButton->setCheckable(true);
     m_rightAlignButton->setAutoExclusive(true);
+    m_rightAlignButton->setFocusPolicy(Qt::NoFocus);
     connect(m_rightAlignButton, &QPushButton::clicked, this, [this] {
         emit alignmentChanged(Qt::AlignRight);
     });

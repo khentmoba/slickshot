@@ -7,14 +7,17 @@
 #include "widgets/panel/colorgrabwidget.h"
 #include "widgets/panel/utilitypanel.h"
 
+#include <QAbstractSpinBox>
 #include <QApplication>
 #include <QCheckBox>
 #include <QKeyEvent>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QShortcut>
 #include <QSlider>
+#include <QTimer>
 #include <QVBoxLayout>
 #if defined(Q_OS_MACOS)
 #include <QScreen>
@@ -48,6 +51,7 @@ SidePanelWidget::SidePanelWidget(QPixmap* p, QWidget* parent)
     m_toolSizeSlider->setRange(1, maxToolSize);
     m_toolSizeSlider->setValue(m_toolSize);
     m_toolSizeSlider->setMinimumWidth(minSliderWidth);
+    m_toolSizeSlider->setFocusPolicy(Qt::NoFocus);
 
     colorLayout->addLayout(toolSizeHBox, 0, 0);
     colorLayout->addWidget(m_toolSizeSlider, 1, 0);
@@ -76,6 +80,7 @@ SidePanelWidget::SidePanelWidget(QPixmap* p, QWidget* parent)
       isDark ? PathInfo::whiteIconPath() : PathInfo::blackIconPath();
     QIcon grabIcon(modifier + "colorize.svg");
     m_colorGrabButton = new QPushButton(grabIcon, tr("Grab Color"));
+    m_colorGrabButton->setFocusPolicy(Qt::NoFocus);
 
     m_layout->addWidget(m_colorGrabButton);
     m_layout->addWidget(m_colorWheel);
@@ -83,6 +88,7 @@ SidePanelWidget::SidePanelWidget(QPixmap* p, QWidget* parent)
 
     QHBoxLayout* gridHBoxLayout = new QHBoxLayout();
     m_gridCheck = new QCheckBox(tr("Display grid"), this);
+    m_gridCheck->setFocusPolicy(Qt::NoFocus);
     m_gridSizeSpin = new QSpinBox(this);
     m_gridSizeSpin->setRange(5, 50);
     m_gridSizeSpin->setSingleStep(5);
@@ -92,6 +98,16 @@ SidePanelWidget::SidePanelWidget(QPixmap* p, QWidget* parent)
     gridHBoxLayout->addWidget(m_gridCheck);
     gridHBoxLayout->addWidget(m_gridSizeSpin);
     m_layout->addLayout(gridHBoxLayout);
+
+    m_colorHex->installEventFilter(this);
+    m_toolSizeSpin->installEventFilter(this);
+    m_gridSizeSpin->installEventFilter(this);
+    if (auto* spinEdit = m_toolSizeSpin->findChild<QLineEdit*>()) {
+        spinEdit->installEventFilter(this);
+    }
+    if (auto* spinEdit = m_gridSizeSpin->findChild<QLineEdit*>()) {
+        spinEdit->installEventFilter(this);
+    }
 
     // tool size sigslots
     connect(m_toolSizeSpin,
@@ -117,6 +133,9 @@ SidePanelWidget::SidePanelWidget(QPixmap* p, QWidget* parent)
         } else {
             emit colorChanged(m_colorHex->text());
         }
+    });
+    connect(m_colorHex, &QLineEdit::returnPressed, this, [this]() {
+        clearEditorFocus(true);
     });
     // color grab button sigslots
     connect(m_colorGrabButton,
@@ -206,19 +225,97 @@ void SidePanelWidget::updateColorNoWheel(const QColor& c)
     m_colorHex->setText(c.name(QColor::HexRgb));
 }
 
+void SidePanelWidget::clearEditorFocus(bool restoreParentFocus)
+{
+    m_colorHex->clearFocus();
+    if (m_toolSizeSpin) {
+        m_toolSizeSpin->clearFocus();
+        if (auto* spinEdit = m_toolSizeSpin->findChild<QLineEdit*>()) {
+            spinEdit->clearFocus();
+        }
+    }
+    if (m_gridSizeSpin) {
+        m_gridSizeSpin->clearFocus();
+        if (auto* spinEdit = m_gridSizeSpin->findChild<QLineEdit*>()) {
+            spinEdit->clearFocus();
+        }
+    }
+    if (restoreParentFocus && window() && window()->isVisible()) {
+        window()->setFocus(Qt::OtherFocusReason);
+    }
+}
+
+bool SidePanelWidget::hasEditorFocus() const
+{
+    if (m_colorHex->hasFocus()) {
+        return true;
+    }
+    if (m_toolSizeSpin && m_toolSizeSpin->hasFocus()) {
+        return true;
+    }
+    if (m_gridSizeSpin && m_gridSizeSpin->hasFocus()) {
+        return true;
+    }
+    return false;
+}
+
 bool SidePanelWidget::eventFilter(QObject* obj, QEvent* event)
 {
+    auto* watchedWidget = qobject_cast<QWidget*>(obj);
+    const bool isChildEditor = watchedWidget != nullptr &&
+                               watchedWidget != this &&
+                               isAncestorOf(watchedWidget);
+
+    if (isChildEditor) {
+        if (event->type() == QEvent::ShortcutOverride) {
+            auto* e = static_cast<QKeyEvent*>(event);
+            if (e->key() == Qt::Key_Escape) {
+                clearEditorFocus(true);
+                e->accept();
+                return true;
+            }
+            if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) &&
+                (e->modifiers() & (Qt::ControlModifier | Qt::AltModifier)) ==
+                  Qt::NoModifier) {
+                e->accept();
+                return true;
+            }
+            if (e->matches(QKeySequence::Copy)) {
+                QLineEdit* le = qobject_cast<QLineEdit*>(obj);
+                if (!le) {
+                    if (auto* sb = qobject_cast<QAbstractSpinBox*>(obj)) {
+                        le = sb->findChild<QLineEdit*>();
+                    }
+                }
+                if (le && !le->hasSelectedText()) {
+                    e->ignore();
+                    return true;
+                }
+            }
+        } else if (event->type() == QEvent::KeyPress) {
+            auto* e = static_cast<QKeyEvent*>(event);
+            if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) &&
+                (e->modifiers() & (Qt::ControlModifier | Qt::AltModifier)) ==
+                  Qt::NoModifier &&
+                obj != m_colorHex) {
+                QTimer::singleShot(
+                  0, this, [this]() { clearEditorFocus(true); });
+            }
+        }
+        return QWidget::eventFilter(obj, event);
+    }
+
     if (event->type() == QEvent::ShortcutOverride) {
         // Override Escape shortcut from CaptureWidget
         auto* e = static_cast<QKeyEvent*>(event);
-        if (e->key() == Qt::Key_Escape && m_colorHex->hasFocus()) {
-            m_colorHex->clearFocus();
+        if (e->key() == Qt::Key_Escape && hasEditorFocus()) {
+            clearEditorFocus(true);
             e->accept();
             return true;
         }
     } else if (event->type() == QEvent::MouseButtonPress) {
-        // Clicks outside of the Color Hex editor
-        m_colorHex->clearFocus();
+        // Clicks outside of the panel editors
+        clearEditorFocus(true);
     }
     return QWidget::eventFilter(obj, event);
 }
@@ -226,5 +323,5 @@ bool SidePanelWidget::eventFilter(QObject* obj, QEvent* event)
 void SidePanelWidget::hideEvent(QHideEvent* event)
 {
     QWidget::hideEvent(event);
-    m_colorHex->clearFocus();
+    clearEditorFocus(false);
 }

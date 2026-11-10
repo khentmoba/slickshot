@@ -5,6 +5,7 @@
 
 #include <QEvent>
 #include <QKeyEvent>
+#include <QKeySequence>
 
 TextWidget::TextWidget(QWidget* parent)
   : QTextEdit(parent)
@@ -24,6 +25,11 @@ bool TextWidget::event(QEvent* e)
         if (keyEvent->key() == Qt::Key_Escape) {
             keyEvent->accept();
             return true;
+        }
+        if (keyEvent->matches(QKeySequence::Copy) &&
+            !textCursor().hasSelection()) {
+            keyEvent->ignore();
+            return false;
         }
     }
 

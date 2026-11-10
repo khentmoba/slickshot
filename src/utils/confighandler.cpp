@@ -241,10 +241,10 @@ static QMap<QString, QSharedPointer<KeySequence>> recognizedShortcuts = {
 #else
     SHORTCUT("TYPE_DELETE_CURRENT_TOOL" ,   "Delete"                ),
 #endif
-    SHORTCUT("TYPE_PIN"                 ,                           ),
-    SHORTCUT("TYPE_SIZEINCREASE"        ,                           ),
-    SHORTCUT("TYPE_SIZEDECREASE"        ,                           ),
-    SHORTCUT("TYPE_CIRCLECOUNT"         ,                           ),
+    SHORTCUT("TYPE_PIN"                 ,   "Ctrl+P"                ),
+    SHORTCUT("TYPE_SIZEINCREASE"        ,   "+"                     ),
+    SHORTCUT("TYPE_SIZEDECREASE"        ,   "-"                     ),
+    SHORTCUT("TYPE_CIRCLECOUNT"         ,   "N"                     ),
     SHORTCUT("TYPE_CLOSE_ACTIVE_PIN_WINDOW"      ,   "Ctrl+Q"                ),
 };
 // clang-format on
