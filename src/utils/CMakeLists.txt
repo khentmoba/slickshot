@@ -46,3 +46,11 @@ IF (WIN32)
     PRIVATE winlnkfileparse.cpp
   )
 ENDIF()
+
+if (NOT DISABLE_UPDATE_CHECKER)
+  target_sources(
+    flameshot
+    PRIVATE appupdate.h
+            appupdate.cpp
+  )
+endif()

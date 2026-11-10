@@ -37,6 +37,7 @@ class QNetworkReply;
 class ColorPicker;
 class NotifierBox;
 class HoverEventFilter;
+struct AppUpdateInfo;
 #if !defined(DISABLE_UPDATE_CHECKER)
 class UpdateNotificationWidget;
 #endif
@@ -56,8 +57,7 @@ public:
     QPixmap pixmap();
     void setCaptureToolObjects(const CaptureToolObjects& captureToolObjects);
 #if !defined(DISABLE_UPDATE_CHECKER)
-    void showAppUpdateNotification(const QString& appLatestVersion,
-                                   const QString& appLatestUrl);
+    void showAppUpdateNotification(const AppUpdateInfo& info);
 #endif
 
 public slots:

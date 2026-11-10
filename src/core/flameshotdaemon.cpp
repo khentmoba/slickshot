@@ -20,7 +20,9 @@
 #endif
 
 #if !defined(DISABLE_UPDATE_CHECKER)
-#include <QDesktopServices>
+#include "utils/appupdate.h"
+#include "widgets/appupdateinstaller.h"
+
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
@@ -227,7 +229,7 @@ void FlameshotDaemon::showUpdateNotificationIfAvailable(CaptureWidget* widget)
     if (!m_appLatestUrl.isEmpty() &&
         ConfigHandler().ignoreUpdateToVersion().compare(m_appLatestVersion) <
           0) {
-        widget->showAppUpdateNotification(m_appLatestVersion, m_appLatestUrl);
+        widget->showAppUpdateNotification(latestUpdateInfo());
     }
 }
 
@@ -253,13 +255,21 @@ void FlameshotDaemon::getLatestAvailableVersion()
     });
 }
 
+AppUpdateInfo FlameshotDaemon::latestUpdateInfo() const
+{
+    return { m_appLatestVersion,
+             m_appLatestUrl,
+             m_appLatestInstallerUrl,
+             m_appLatestChecksumUrl };
+}
+
 void FlameshotDaemon::checkForUpdates()
 {
     bool autoCheckEnabled = ConfigHandler().checkForUpdates();
 
     if (autoCheckEnabled) {
         if (!m_appLatestUrl.isEmpty()) {
-            QDesktopServices::openUrl(QUrl(m_appLatestUrl));
+            AppUpdateInstaller::openUpdate(latestUpdateInfo());
         }
     } else {
         m_showManualCheckAppUpdateStatus = true;
@@ -270,7 +280,7 @@ void FlameshotDaemon::checkForUpdates()
             QVersionNumber appLatestVersion =
               QVersionNumber::fromString(m_appLatestVersion);
             if (Flameshot::instance()->getVersion() < appLatestVersion) {
-                QDesktopServices::openUrl(QUrl(m_appLatestUrl));
+                AppUpdateInstaller::openUpdate(latestUpdateInfo());
             } else {
                 sendTrayNotification(tr("You have the latest version"),
                                      "Flameshot");
@@ -428,8 +438,11 @@ void FlameshotDaemon::handleReplyCheckUpdates(QNetworkReply* reply)
         if (Flameshot::instance()->getVersion() < appLatestVersion) {
             emit newVersionAvailable(appLatestVersion);
             m_appLatestUrl = json["html_url"].toString();
+            const AppUpdateInfo release = AppUpdate::releaseInfo(json);
+            m_appLatestInstallerUrl = release.installerUrl;
+            m_appLatestChecksumUrl = release.checksumUrl;
             if (m_showManualCheckAppUpdateStatus) {
-                QDesktopServices::openUrl(QUrl(m_appLatestUrl));
+                AppUpdateInstaller::openUpdate(latestUpdateInfo());
             }
         } else if (m_showManualCheckAppUpdateStatus) {
             sendTrayNotification(tr("You have the latest version"),

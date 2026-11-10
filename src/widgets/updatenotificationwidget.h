@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "utils/appupdate.h"
+
 #include <QPointer>
 #include <QWidget>
 
@@ -18,8 +20,7 @@ class UpdateNotificationWidget : public QWidget
     Q_OBJECT
 public:
     explicit UpdateNotificationWidget(QWidget* parent,
-                                      const QString& appLatestVersion,
-                                      QString appLatestUrl);
+                                      const AppUpdateInfo& info);
     void setAppLatestVersion(const QString& latestVersion);
 
     void hide();
@@ -34,8 +35,7 @@ private:
     void initInternalPanel();
 
     // class members
-    QString m_appLatestVersion;
-    QString m_appLatestUrl;
+    AppUpdateInfo m_info;
     QVBoxLayout* m_layout;
     QLabel* m_notification;
     QScrollArea* m_internalPanel;

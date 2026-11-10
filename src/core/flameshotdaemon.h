@@ -18,6 +18,7 @@ class CaptureWidget;
 class QNetworkAccessManager;
 class QNetworkReply;
 class QVersionNumber;
+struct AppUpdateInfo;
 #endif
 
 class FlameshotDaemon : public QObject
@@ -46,6 +47,7 @@ public slots:
 #if !defined(DISABLE_UPDATE_CHECKER)
 public:
     void showUpdateNotificationIfAvailable(CaptureWidget* widget);
+    AppUpdateInfo latestUpdateInfo() const;
 
 public slots:
     void checkForUpdates();
@@ -87,6 +89,8 @@ private:
 #if !defined(DISABLE_UPDATE_CHECKER)
     QString m_appLatestUrl;
     QString m_appLatestVersion;
+    QString m_appLatestInstallerUrl;
+    QString m_appLatestChecksumUrl;
     bool m_showManualCheckAppUpdateStatus;
     QNetworkAccessManager* m_networkCheckUpdates;
 #endif

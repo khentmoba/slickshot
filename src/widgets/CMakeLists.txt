@@ -64,5 +64,7 @@ if (NOT DISABLE_UPDATE_CHECKER)
             PRIVATE
             updatenotificationwidget.h
             updatenotificationwidget.cpp
+            appupdateinstaller.h
+            appupdateinstaller.cpp
     )
 endif()

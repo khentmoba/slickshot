@@ -1316,16 +1316,14 @@ void CaptureWidget::initPanel()
 }
 
 #if !defined(DISABLE_UPDATE_CHECKER)
-void CaptureWidget::showAppUpdateNotification(const QString& appLatestVersion,
-                                              const QString& appLatestUrl)
+void CaptureWidget::showAppUpdateNotification(const AppUpdateInfo& info)
 {
     if (!ConfigHandler().checkForUpdates()) {
         // option check for updates disabled
         return;
     }
     if (nullptr == m_updateNotificationWidget) {
-        m_updateNotificationWidget =
-          new UpdateNotificationWidget(this, appLatestVersion, appLatestUrl);
+        m_updateNotificationWidget = new UpdateNotificationWidget(this, info);
     }
 #if defined(Q_OS_MACOS)
     int ax = (width() - m_updateNotificationWidget->width()) / 2;
