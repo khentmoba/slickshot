@@ -127,3 +127,10 @@ jobs:
         shell: powershell
         run: |
           cmake --build . --config $env:BUILD_TYPE
+
+      - name: Test
+        working-directory: build
+        shell: powershell
+        # --no-tests=error fails the job if no test was configured.
+        run: |
+          ctest -C $env:BUILD_TYPE --output-on-failure --no-tests=error
