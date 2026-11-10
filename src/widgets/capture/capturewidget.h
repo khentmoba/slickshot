@@ -25,6 +25,7 @@
 #include <QTimer>
 #include <QUndoStack>
 #include <QWidget>
+#include <functional>
 
 class QLabel;
 class QPaintEvent;
@@ -55,6 +56,7 @@ public:
     ~CaptureWidget();
 
     QPixmap pixmap();
+    void activateCaptureWindow();
     void setCaptureToolObjects(const CaptureToolObjects& captureToolObjects);
 #if !defined(DISABLE_UPDATE_CHECKER)
     void showAppUpdateNotification(const AppUpdateInfo& info);
@@ -109,6 +111,7 @@ protected:
     void wheelEvent(QWheelEvent* wheelEvent) override;
     void resizeEvent(QResizeEvent* resizeEvent) override;
     void moveEvent(QMoveEvent* moveEvent) override;
+    void showEvent(QShowEvent* showEvent) override;
     void changeEvent(QEvent* changeEvent) override;
     void closeEvent(QCloseEvent* event) override;
 
@@ -140,6 +143,11 @@ private:
     QList<QShortcut*> newShortcut(const QKeySequence& key,
                                   QWidget* parent,
                                   const char* slot);
+    bool isShortcutInUse(const QKeySequence& key) const;
+    void addFallbackShortcut(const QKeySequence& key,
+                             const std::function<void()>& handler);
+    void triggerToolButton(CaptureTool::Type type);
+    bool isTextInputFocused() const;
 
     void setToolSize(int size);
 
@@ -210,6 +218,7 @@ private:
     SelectionWidget::SideType m_mouseOverHandle;
 
     QMap<CaptureTool::Type, CaptureTool*> m_tools;
+    QMap<CaptureTool::Type, CaptureToolButton*> m_toolButtons;
     CaptureToolObjects m_captureToolObjects;
     CaptureToolObjects m_captureToolObjectsBackup;
 

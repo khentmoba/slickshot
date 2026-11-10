@@ -28,16 +28,27 @@
 #include "widgets/panel/sidepanelwidget.h"
 #include "widgets/panel/utilitypanel.h"
 
+#include <QAbstractSpinBox>
 #include <QApplication>
 #include <QCheckBox>
 #include <QDateTime>
 #include <QFontMetrics>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QScreen>
 #include <QShortcut>
+#include <QShowEvent>
+#include <QTextEdit>
 #include <QWindow>
+
+#if defined(Q_OS_WIN)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <qt_windows.h>
+#endif
 
 #if !defined(DISABLE_UPDATE_CHECKER)
 #include "widgets/updatenotificationwidget.h"
@@ -100,6 +111,7 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
     m_xywhTimer.setSingleShot(true);
     setAttribute(Qt::WA_DeleteOnClose);
     setAttribute(Qt::WA_QuitOnClose, false);
+    setFocusPolicy(Qt::StrongFocus);
     m_opacity = m_config.contrastOpacity();
     m_uiColor = m_config.uiColor();
     m_contrastUiColor = m_config.contrastUiColor();
@@ -134,7 +146,7 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
 #if defined(Q_OS_WIN)
 #if !defined(FLAMESHOT_DEBUG_CAPTURE)
         setWindowFlags(Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint |
-                       Qt::SubWindow // Hides the taskbar icon
+                       Qt::Tool // Hides the taskbar icon
         );
 #endif
         // Position the window at the selected screen's position
@@ -373,11 +385,19 @@ void CaptureWidget::initButtons()
                 // Set shortcuts for a tool
                 QString shortcut =
                   ConfigHandler().shortcut(QVariant::fromValue(t).toString());
-                if (!shortcut.isNull()) {
+                if (!shortcut.isEmpty()) {
                     auto shortcuts = newShortcut(shortcut, this, nullptr);
                     for (auto* sc : shortcuts) {
                         connect(sc, &QShortcut::activated, this, [=, this]() {
-                            setState(b);
+                            // Size keys set the size directly so they never
+                            // commit a shape that is still being drawn.
+                            if (t == CaptureTool::TYPE_SIZEINCREASE) {
+                                setToolSize(m_context.toolSize + 1);
+                            } else if (t == CaptureTool::TYPE_SIZEDECREASE) {
+                                setToolSize(m_context.toolSize - 1);
+                            } else {
+                                setState(b);
+                            }
                         });
                     }
                 }
@@ -385,6 +405,7 @@ void CaptureWidget::initButtons()
         }
 
         m_tools[t] = b->tool();
+        m_toolButtons[t] = b;
 
         connect(b->tool(),
                 &CaptureTool::requestAction,
@@ -473,7 +494,8 @@ void CaptureWidget::initHelpMessage()
     QList<QPair<QString, QString>> keyMap;
     keyMap << std::pair(tr("Mouse"), tr("Select screenshot area"));
     using CT = CaptureTool;
-    for (auto toolType : { CT::TYPE_ACCEPT, CT::TYPE_SAVE, CT::TYPE_COPY }) {
+    for (auto toolType :
+         { CT::TYPE_ACCEPT, CT::TYPE_SAVE, CT::TYPE_COPY, CT::TYPE_PIN }) {
         if (!m_tools.contains(toolType)) {
             continue;
         }
@@ -484,6 +506,10 @@ void CaptureWidget::initHelpMessage()
         if (!shortcut.isEmpty()) {
             keyMap << std::pair(shortcut, tool->description());
         }
+    }
+    QString selectAllShortcut = ConfigHandler().shortcut("TYPE_SELECT_ALL");
+    if (!selectAllShortcut.isEmpty()) {
+        keyMap << std::pair(selectAllShortcut, tr("Select entire screen"));
     }
     keyMap << std::pair(tr("Mouse Wheel"), tr("Change tool size"));
     keyMap << std::pair(tr("Right Click"), tr("Show color picker"));
@@ -573,6 +599,9 @@ void CaptureWidget::deleteToolWidgetOrClose()
         m_toolWidget->hide();
         delete m_toolWidget;
         m_toolWidget = nullptr;
+        if (isVisible() && !isTextInputFocused()) {
+            setFocus(Qt::OtherFocusReason);
+        }
     } else if (m_colorPicker && m_colorPicker->isVisible()) {
         m_colorPicker->hide();
     } else {
@@ -590,6 +619,7 @@ void CaptureWidget::deleteToolWidgetOrClose()
 
 void CaptureWidget::releaseActiveTool()
 {
+    const bool hadToolWidget = !m_toolWidget.isNull();
     if (m_activeTool) {
         if (m_activeTool->editMode()) {
             // Object shouldn't be deleted here because it is in the undo/redo
@@ -607,6 +637,9 @@ void CaptureWidget::releaseActiveTool()
         m_toolWidget->hide();
         delete m_toolWidget;
         m_toolWidget = nullptr;
+    }
+    if (hadToolWidget && isVisible() && !isTextInputFocused()) {
+        setFocus(Qt::OtherFocusReason);
     }
 }
 
@@ -875,7 +908,9 @@ int CaptureWidget::selectToolItemAtPos(const QPoint& pos)
 
 void CaptureWidget::mousePressEvent(QMouseEvent* e)
 {
-    activateWindow();
+#if defined(Q_OS_WIN)
+    activateCaptureWindow();
+#endif
     m_startMove = false;
     m_startMovePos = QPoint();
     m_mousePressedPos = e->pos();
@@ -1116,11 +1151,6 @@ void CaptureWidget::keyPressEvent(QKeyEvent* e)
     } else if (e->key() == Qt::Key_Control) {
         m_adjustmentButtonPressed = true;
         updateCursor();
-    } else if (e->key() == Qt::Key_Enter) {
-        // Make no difference for Return and Enter keys
-        QCoreApplication::postEvent(
-          this,
-          new QKeyEvent(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier));
     }
 }
 
@@ -1189,6 +1219,24 @@ void CaptureWidget::moveEvent(QMoveEvent* e)
     if (m_context.fullscreen && m_selectedScreen &&
         geometry().topLeft() != m_selectedScreen->geometry().topLeft()) {
         move(m_selectedScreen->geometry().topLeft());
+    }
+#endif
+}
+
+void CaptureWidget::showEvent(QShowEvent* e)
+{
+    QWidget::showEvent(e);
+#if defined(Q_OS_WIN)
+    if (!e->spontaneous() && m_context.fullscreen) {
+        activateCaptureWindow();
+        HWND hwnd = reinterpret_cast<HWND>(winId());
+        if (hwnd && GetForegroundWindow() != hwnd) {
+            QTimer::singleShot(25, this, [this]() {
+                if (isVisible()) {
+                    activateCaptureWindow();
+                }
+            });
+        }
     }
 #endif
 }
@@ -1737,6 +1785,67 @@ void CaptureWidget::initShortcuts()
                 SLOT(selectAll()));
 
     newShortcut(Qt::Key_Escape, this, SLOT(deleteToolWidgetOrClose()));
+
+    // Windows-ergonomic and alternate shortcuts (only added when unbound)
+    addFallbackShortcut(QKeySequence(Qt::CTRL | Qt::Key_Y),
+                        [this]() { redo(); });
+
+    if (m_toolButtons.contains(CaptureTool::TYPE_COPY)) {
+        addFallbackShortcut(QKeySequence(Qt::CTRL | Qt::Key_Insert), [this]() {
+            triggerToolButton(CaptureTool::TYPE_COPY);
+        });
+
+        if (m_context.request.tasks() == CaptureRequest::NO_TASK) {
+            const QKeySequence returnSeq(Qt::Key_Return);
+            const QKeySequence enterSeq(Qt::Key_Enter);
+            if (!isShortcutInUse(returnSeq) && !isShortcutInUse(enterSeq)) {
+                auto shortcuts = newShortcut(returnSeq, this, nullptr);
+                for (auto* sc : shortcuts) {
+                    connect(sc, &QShortcut::activated, this, [this]() {
+                        if (m_selection && m_selection->isVisible() &&
+                            !m_toolWidget &&
+                            !(m_colorPicker && m_colorPicker->isVisible()) &&
+                            !isTextInputFocused()) {
+                            triggerToolButton(CaptureTool::TYPE_COPY);
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    if (m_toolButtons.contains(CaptureTool::TYPE_EXIT)) {
+        addFallbackShortcut(QKeySequence(Qt::CTRL | Qt::Key_W), [this]() {
+            triggerToolButton(CaptureTool::TYPE_EXIT);
+        });
+    }
+
+    if (m_toolButtons.contains(CaptureTool::TYPE_SIZEINCREASE)) {
+        for (const QKeySequence& seq :
+             { QKeySequence(Qt::Key_Equal),
+               QKeySequence(Qt::Key_BracketRight),
+               QKeySequence(Qt::CTRL | Qt::Key_Plus),
+               QKeySequence(Qt::CTRL | Qt::Key_Equal) }) {
+            addFallbackShortcut(
+              seq, [this]() { setToolSize(m_context.toolSize + 1); });
+        }
+    }
+
+    if (m_toolButtons.contains(CaptureTool::TYPE_SIZEDECREASE)) {
+        for (const QKeySequence& seq :
+             { QKeySequence(Qt::Key_BracketLeft),
+               QKeySequence(Qt::CTRL | Qt::Key_Minus) }) {
+            addFallbackShortcut(
+              seq, [this]() { setToolSize(m_context.toolSize - 1); });
+        }
+    }
+
+    addFallbackShortcut(QKeySequence(Qt::Key_Backspace), [this]() {
+        if (!m_toolWidget && !isTextInputFocused() && m_panel &&
+            m_panel->activeLayerIndex() >= 0) {
+            deleteCurrentTool();
+        }
+    });
 }
 
 void CaptureWidget::deleteCurrentTool()
@@ -1959,6 +2068,9 @@ QList<QShortcut*> CaptureWidget::newShortcut(const QKeySequence& key,
                                              const char* slot)
 {
     QList<QShortcut*> shortcuts;
+    if (key.isEmpty()) {
+        return shortcuts;
+    }
     QString strKey = key.toString();
     if (strKey.contains("Enter") || strKey.contains("Return")) {
         strKey.replace("Enter", "Return");
@@ -1969,6 +2081,80 @@ QList<QShortcut*> CaptureWidget::newShortcut(const QKeySequence& key,
         shortcuts << new QShortcut(key, parent, slot);
     }
     return shortcuts;
+}
+
+bool CaptureWidget::isShortcutInUse(const QKeySequence& key) const
+{
+    if (key.isEmpty()) {
+        return true;
+    }
+    const auto existing = findChildren<QShortcut*>();
+    for (const QShortcut* sc : existing) {
+        if (!sc->key().isEmpty() && sc->key() == key) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void CaptureWidget::addFallbackShortcut(const QKeySequence& key,
+                                        const std::function<void()>& handler)
+{
+    if (isShortcutInUse(key)) {
+        return;
+    }
+    auto shortcuts = newShortcut(key, this, nullptr);
+    for (auto* sc : shortcuts) {
+        connect(sc, &QShortcut::activated, this, handler);
+    }
+}
+
+void CaptureWidget::triggerToolButton(CaptureTool::Type type)
+{
+    auto it = m_toolButtons.constFind(type);
+    if (it != m_toolButtons.constEnd() && it.value()) {
+        setState(it.value());
+    }
+}
+
+bool CaptureWidget::isTextInputFocused() const
+{
+    QWidget* fw = QApplication::focusWidget();
+    return qobject_cast<QLineEdit*>(fw) != nullptr ||
+           qobject_cast<QTextEdit*>(fw) != nullptr ||
+           qobject_cast<QAbstractSpinBox*>(fw) != nullptr;
+}
+
+void CaptureWidget::activateCaptureWindow()
+{
+    raise();
+    activateWindow();
+    setFocus(Qt::ActiveWindowFocusReason);
+
+#if defined(Q_OS_WIN)
+    HWND hwnd = reinterpret_cast<HWND>(winId());
+    if (!hwnd) {
+        return;
+    }
+    HWND fgHwnd = GetForegroundWindow();
+    if (fgHwnd == hwnd) {
+        return;
+    }
+
+    DWORD fgThread = fgHwnd ? GetWindowThreadProcessId(fgHwnd, nullptr) : 0;
+    DWORD curThread = GetCurrentThreadId();
+    if (fgThread != 0 && fgThread != curThread) {
+        AttachThreadInput(curThread, fgThread, TRUE);
+        SetForegroundWindow(hwnd);
+        BringWindowToTop(hwnd);
+        SetFocus(hwnd);
+        AttachThreadInput(curThread, fgThread, FALSE);
+    } else {
+        SetForegroundWindow(hwnd);
+        BringWindowToTop(hwnd);
+        SetFocus(hwnd);
+    }
+#endif
 }
 
 void CaptureWidget::togglePanel()
@@ -2042,6 +2228,9 @@ void CaptureWidget::cancel()
         m_toolWidget->hide();
         delete m_toolWidget;
         m_toolWidget = nullptr;
+        if (isVisible() && !isTextInputFocused()) {
+            setFocus(Qt::OtherFocusReason);
+        }
     }
     m_selection->hide();
     emit m_selection->geometrySettled();

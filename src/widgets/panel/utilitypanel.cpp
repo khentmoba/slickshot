@@ -108,6 +108,9 @@ void UtilityPanel::hide()
     m_hideAnimation->start();
     m_internalPanel->hide();
     QWidget::hide();
+    if (m_captureWidget && m_captureWidget->isVisible()) {
+        m_captureWidget->setFocus(Qt::OtherFocusReason);
+    }
 }
 
 void UtilityPanel::toggle()
@@ -143,6 +146,7 @@ void UtilityPanel::initInternalPanel()
     m_internalPanel->hide();
 
     m_captureTools = new QListWidget(this);
+    m_captureTools->setFocusPolicy(Qt::NoFocus);
     connect(m_captureTools,
             &QListWidget::currentRowChanged,
             this,
@@ -158,16 +162,19 @@ void UtilityPanel::initInternalPanel()
       isDark ? PathInfo::whiteIconPath() : PathInfo::blackIconPath();
 
     m_buttonDelete = new QPushButton(this);
+    m_buttonDelete->setFocusPolicy(Qt::NoFocus);
     m_buttonDelete->setIcon(QIcon(coloredIconPath + "delete.svg"));
     m_buttonDelete->setMinimumWidth(m_buttonDelete->height());
     m_buttonDelete->setDisabled(true);
 
     m_buttonMoveUp = new QPushButton(this);
+    m_buttonMoveUp->setFocusPolicy(Qt::NoFocus);
     m_buttonMoveUp->setIcon(QIcon(coloredIconPath + "move_up.svg"));
     m_buttonMoveUp->setMinimumWidth(m_buttonMoveUp->height());
     m_buttonMoveUp->setDisabled(true);
 
     m_buttonMoveDown = new QPushButton(this);
+    m_buttonMoveDown->setFocusPolicy(Qt::NoFocus);
     m_buttonMoveDown->setIcon(QIcon(coloredIconPath + "move_down.svg"));
     m_buttonMoveDown->setMinimumWidth(m_buttonMoveDown->height());
     m_buttonMoveDown->setDisabled(true);
@@ -194,6 +201,7 @@ void UtilityPanel::initInternalPanel()
 
     // Bottom
     auto* closeButton = new QPushButton(this);
+    closeButton->setFocusPolicy(Qt::NoFocus);
     closeButton->setText(tr("Close"));
     connect(closeButton, &QPushButton::clicked, this, &UtilityPanel::toggle);
     m_bottomLayout->addWidget(closeButton);

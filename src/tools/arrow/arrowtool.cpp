@@ -208,6 +208,7 @@ QWidget* ArrowTool::configurationWidget()
     auto* layout = new QHBoxLayout(widget);
     auto* label = new QLabel(tr("Arrow style:"), widget);
     auto* styleSelector = new QComboBox(widget);
+    styleSelector->setFocusPolicy(Qt::NoFocus);
 
     styleSelector->addItem(tr("Default"));
     styleSelector->addItem(tr("Curved"));

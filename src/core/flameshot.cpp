@@ -186,6 +186,7 @@ CaptureWidget* Flameshot::gui(const CaptureRequest& req)
 
 #ifdef Q_OS_WIN
         m_captureWindow->show();
+        m_captureWindow->activateCaptureWindow();
 #elif defined(Q_OS_MACOS)
         if (ConfigHandler().useNativeFullscreen()) {
             m_captureWindow->showFullScreen();

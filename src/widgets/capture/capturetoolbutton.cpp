@@ -6,6 +6,7 @@
 #include "tools/toolfactory.h"
 #include "utils/confighandler.h"
 #include "utils/globalvalues.h"
+#include "widgets/capture/capturewidget.h"
 
 #include <QApplication>
 #include <QIcon>
@@ -93,6 +94,11 @@ QIcon CaptureToolButton::icon() const
 void CaptureToolButton::mousePressEvent(QMouseEvent* e)
 {
     activateWindow();
+#if defined(Q_OS_WIN)
+    if (auto* cw = qobject_cast<CaptureWidget*>(window())) {
+        cw->activateCaptureWindow();
+    }
+#endif
     if (e->button() == Qt::LeftButton) {
         emit pressedButtonLeftClick(this);
         emit pressed();

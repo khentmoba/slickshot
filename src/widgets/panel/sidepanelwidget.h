@@ -50,6 +50,8 @@ private slots:
 private:
     void finalizeGrab();
     void updateColorNoWheel(const QColor& color);
+    void clearEditorFocus(bool restoreParentFocus = false);
+    bool hasEditorFocus() const;
 
     bool eventFilter(QObject* obj, QEvent* event) override;
     void hideEvent(QHideEvent* event) override;
