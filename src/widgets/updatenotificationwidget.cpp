@@ -4,8 +4,8 @@
 
 #include "updatenotificationwidget.h"
 #include "utils/confighandler.h"
+#include "widgets/appupdateinstaller.h"
 
-#include <QDesktopServices>
 #include <QLabel>
 #include <QPropertyAnimation>
 #include <QPushButton>
@@ -13,15 +13,11 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWheelEvent>
-#include <utility>
 
-UpdateNotificationWidget::UpdateNotificationWidget(
-  QWidget* parent,
-  const QString& appLatestVersion,
-  QString appLatestUrl)
+UpdateNotificationWidget::UpdateNotificationWidget(QWidget* parent,
+                                                   const AppUpdateInfo& info)
   : QWidget(parent)
-  , m_appLatestVersion(appLatestVersion)
-  , m_appLatestUrl(std::move(appLatestUrl))
+  , m_info(info)
   , m_layout(nullptr)
 {
     setMinimumSize(400, 100);
@@ -41,7 +37,7 @@ UpdateNotificationWidget::UpdateNotificationWidget(
             &QPropertyAnimation::finished,
             m_internalPanel,
             &QWidget::hide);
-    setAppLatestVersion(appLatestVersion);
+    setAppLatestVersion(info.version);
 }
 
 void UpdateNotificationWidget::show()
@@ -66,7 +62,7 @@ void UpdateNotificationWidget::hide()
 
 void UpdateNotificationWidget::setAppLatestVersion(const QString& latestVersion)
 {
-    m_appLatestVersion = latestVersion;
+    m_info.version = latestVersion;
     QString newVersion =
       tr("New Flameshot version %1 is available").arg(latestVersion);
     m_notification->setText(newVersion);
@@ -79,22 +75,22 @@ void UpdateNotificationWidget::laterButton()
 
 void UpdateNotificationWidget::ignoreButton()
 {
-    ConfigHandler().setIgnoreUpdateToVersion(m_appLatestVersion);
+    ConfigHandler().setIgnoreUpdateToVersion(m_info.version);
     hide();
 }
 
 void UpdateNotificationWidget::updateButton()
 {
-    // Store URL before closing widgets
-    QString url = m_appLatestUrl;
+    // Copy before closing the parent, which destroys this widget
+    const AppUpdateInfo info = m_info;
 
     hide();
     if (parentWidget()) {
         parentWidget()->close();
     }
 
-    // Open URL after closing widgets
-    QDesktopServices::openUrl(QUrl(url));
+    // Start the update after closing widgets
+    AppUpdateInstaller::openUpdate(info);
 }
 
 void UpdateNotificationWidget::initInternalPanel()
@@ -116,7 +112,7 @@ void UpdateNotificationWidget::initInternalPanel()
     widget->setLayout(m_layout);
 
     // caption
-    m_notification = new QLabel(m_appLatestVersion, this);
+    m_notification = new QLabel(m_info.version, this);
     m_layout->addWidget(m_notification);
 
     // buttons layout
