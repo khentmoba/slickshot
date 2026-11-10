@@ -55,8 +55,12 @@ Section "Install"
     FileClose $0
 
   ; Remove the previous install first so files from an older build don't linger.
-  IfFileExists "$INSTDIR\uninstall.exe" 0 +2
-    ExecWait '"$INSTDIR\uninstall.exe" /S _?=$INSTDIR'
+  ; The old uninstaller is not run: _?= makes it run in place, where it cannot
+  ; delete its own image and leaves uninstall.exe behind. Only clear a folder
+  ; that holds a SlickShot install, so a stray /D= cannot wipe an unrelated one.
+  IfFileExists "$INSTDIR\uninstall.exe" +2 0
+  IfFileExists "$INSTDIR\${APP_EXE}" 0 +2
+  RMDir /r "$INSTDIR"
 
   SetOutPath "$INSTDIR"
   File /r "${STAGING}\*.*"
