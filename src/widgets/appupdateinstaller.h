@@ -13,14 +13,14 @@ class QNetworkReply;
 class QProgressDialog;
 class QUrl;
 
-// Downloads, verifies and installs a release over the running MSI install.
-// Owns itself: it deletes itself once the update is abandoned or handed to
-// msiexec.
+// Downloads and verifies the release installer, then hands it to a script that
+// runs it silently after this process exits. Owns itself: it deletes itself
+// once the update is abandoned.
 class AppUpdateInstaller : public QObject
 {
     Q_OBJECT
 public:
-    // Installs in place when possible, otherwise opens the release page.
+    // Updates in place when possible, otherwise opens the release page.
     static void openUpdate(const AppUpdateInfo& info);
 
     ~AppUpdateInstaller() override;
@@ -28,7 +28,7 @@ public:
 private:
     explicit AppUpdateInstaller(const AppUpdateInfo& info);
 
-    void confirmAndDownload();
+    void start();
     void downloadChecksum();
     void downloadInstaller();
     void install();
@@ -40,10 +40,10 @@ private:
     QNetworkAccessManager* m_network;
     QNetworkReply* m_reply;
     QProgressDialog* m_progress;
-    std::unique_ptr<QFile> m_msiFile;
+    std::unique_ptr<QFile> m_installerFile;
     QCryptographicHash m_hash;
     QString m_expectedSha256;
-    QString m_msiPath;
+    QString m_installerPath;
     bool m_canceled;
     bool m_writeError;
 };

@@ -119,16 +119,18 @@ jobs:
         run: |
           # Chocolately made their own package called cpack and its first in the path. This is a hack since we are only using cmake's cpack, doesn't seem to be required after a CI update
           #Remove-Item C:\ProgramData\Chocolatey\bin\cpack.exe
-          If ($env:TYPE -eq "installer")
-          {
-            cpack -G WIX -B "$env:GITHUB_WORKSPACE\build\Package"
-          }
-          ElseIf($env:TYPE -eq "portable")
+          If ($env:TYPE -eq "portable")
           {
             cpack -G ZIP -B "$env:GITHUB_WORKSPACE\build\Package"
           }
         env:
           TYPE: ${{matrix.type}}
+
+      - name: Stage installer files
+        if:  matrix.type == 'installer'
+        working-directory: build
+        shell: pwsh
+        run: cmake --install . --config Release --prefix "$env:GITHUB_WORKSPACE\build\staging"
 
       - name: Package Clean
         shell: pwsh
@@ -137,12 +139,18 @@ jobs:
           New-Item -Path $env:GITHUB_WORKSPACE\build\Package\installer -ItemType Directory
           New-Item -Path $env:GITHUB_WORKSPACE\build\Package\portable -ItemType Directory
 
-      - name: Package Prepare (installer)
+      - name: Build installer (NSIS)
         if:  matrix.type == 'installer'
         shell: pwsh
         run: |
-          $item = Get-Item -Path "$env:GITHUB_WORKSPACE/build/Package/*shot-*-${{ matrix.config.pak_arch }}.msi" | Select-Object -First 1
-          Move-Item -Path $item.FullName -Destination "$env:GITHUB_WORKSPACE/build/Package/installer/SlickShot-${{ env.VERSION }}-${{ matrix.config.pak_arch }}.msi"
+          $makensis = (Get-Command makensis -ErrorAction SilentlyContinue).Source
+          if (-not $makensis) {
+            choco install nsis -y --no-progress
+            $makensis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          }
+          $out = "$env:GITHUB_WORKSPACE\build\Package\installer\SlickShot-${{ env.VERSION }}-${{ matrix.config.pak_arch }}-setup.exe"
+          & $makensis "/DVERSION=${{ env.VERSION }}" "/DSTAGING=$env:GITHUB_WORKSPACE\build\staging" "/DOUTFILE=$out" "$env:GITHUB_WORKSPACE\packaging\win-installer\SlickShot.nsi"
+          if ($LASTEXITCODE -ne 0) { throw "makensis failed" }
 
       - name: Package Prepare (portable)
         if:  matrix.type == 'portable'
@@ -155,8 +163,10 @@ jobs:
         if:  matrix.type == 'installer'
         shell: bash
         run: |
-          sha256sum $GITHUB_WORKSPACE/build/Package/installer/SlickShot-${{ env.VERSION }}-${{ matrix.config.pak_arch }}.msi
-          sha256sum $GITHUB_WORKSPACE/build/Package/installer/SlickShot-${{ env.VERSION }}-${{ matrix.config.pak_arch }}.msi > $GITHUB_WORKSPACE/build/Package/installer/SlickShot-${{ env.VERSION }}-${{ matrix.config.pak_arch }}.msi.sha256sum
+          cd $GITHUB_WORKSPACE/build/Package/installer
+          f=SlickShot-${{ env.VERSION }}-${{ matrix.config.pak_arch }}-setup.exe
+          sha256sum "$f" > "$f.sha256sum"
+          cat "$f.sha256sum"
 
       - name: SHA256Sum of Windows portable
         if:  matrix.type == 'portable'
@@ -171,8 +181,8 @@ jobs:
         with:
           name: ${{ env.PRODUCT }}-${{ env.VER_INFO }}-artifact-win-${{ matrix.config.arch }}-${{ matrix.type }}
           path: |
-            ${{ github.workspace }}/build/Package/installer/SlickShot-${{ env.VERSION }}-${{ matrix.config.pak_arch }}.msi
-            ${{ github.workspace }}/build/Package/installer/SlickShot-${{ env.VERSION }}-${{ matrix.config.pak_arch }}.msi.sha256sum
+            ${{ github.workspace }}/build/Package/installer/SlickShot-${{ env.VERSION }}-${{ matrix.config.pak_arch }}-setup.exe
+            ${{ github.workspace }}/build/Package/installer/SlickShot-${{ env.VERSION }}-${{ matrix.config.pak_arch }}-setup.exe.sha256sum
           overwrite: true
 
       - name: Artifact Upload
