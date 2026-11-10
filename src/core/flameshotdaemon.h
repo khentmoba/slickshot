@@ -35,7 +35,7 @@ public:
 
     void sendTrayNotification(
       const QString& text,
-      const QString& title = QStringLiteral("Flameshot Info"),
+      const QString& title = QStringLiteral("SlickShot Info"),
       const int timeout = 5000);
 
 #if defined(USE_KDSINGLEAPPLICATION) &&                                        \

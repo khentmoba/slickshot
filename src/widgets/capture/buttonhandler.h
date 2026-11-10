@@ -5,11 +5,12 @@
 
 #include "capturetoolbutton.h"
 #include <QObject>
+#include <QRect>
 #include <QRegion>
 #include <QVector>
 
 class CaptureToolButton;
-class QRect;
+class QFrame;
 class QPoint;
 
 class ButtonHandler : public QObject
@@ -49,10 +50,12 @@ private:
     QRect intersectWithAreas(const QRect& rect);
 
     QVector<CaptureToolButton*> m_vectorButtons;
+    QFrame* m_toolbarBackdrop = nullptr;
 
     QVector<QRect> m_screenRegions;
 
     QRect m_selection;
+    QRect m_toolbarRect;
 
     int m_separator;
     int m_buttonExtendedSize;

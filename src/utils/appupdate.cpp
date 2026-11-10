@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -49,20 +50,57 @@ AppUpdateInfo AppUpdate::releaseInfo(const QJsonObject& release)
     return info;
 }
 
-bool AppUpdate::canInstallInPlace(const AppUpdateInfo& info)
+bool AppUpdate::canInstallInPlaceForPaths(const AppUpdateInfo& info,
+                                          const QString& appDir,
+                                          const QString& programFiles,
+                                          const QString& localPrograms,
+                                          bool isPortable)
 {
-#if defined(Q_OS_WIN)
-    if (info.installerUrl.isEmpty() || info.checksumUrl.isEmpty()) {
+    if (isPortable || info.installerUrl.isEmpty() ||
+        info.checksumUrl.isEmpty()) {
         return false;
     }
-    const QString appDir =
-      QDir::toNativeSeparators(QCoreApplication::applicationDirPath()) +
-      QDir::separator();
-    const QString programFiles =
-      QDir::toNativeSeparators(qEnvironmentVariable("ProgramFiles")) +
-      QDir::separator();
-    return programFiles.length() > 1 &&
-           appDir.startsWith(programFiles, Qt::CaseInsensitive);
+    const auto normalizeDir = [](const QString& dir) {
+        QString slashed = dir;
+        slashed.replace(QLatin1Char('\\'), QLatin1Char('/'));
+        QString clean = QDir::cleanPath(slashed);
+        if (!clean.isEmpty() && !clean.endsWith(QLatin1Char('/'))) {
+            clean += QLatin1Char('/');
+        }
+        return clean;
+    };
+
+    const QString normAppDir = normalizeDir(appDir);
+    if (normAppDir.length() <= 1) {
+        return false;
+    }
+
+    const QString normProgramFiles = normalizeDir(programFiles);
+    if (normProgramFiles.length() > 1 &&
+        normAppDir.startsWith(normProgramFiles, Qt::CaseInsensitive)) {
+        return true;
+    }
+
+    const QString normLocalPrograms = normalizeDir(localPrograms);
+    return normLocalPrograms.length() > 1 &&
+           normAppDir.startsWith(normLocalPrograms, Qt::CaseInsensitive);
+}
+
+bool AppUpdate::canInstallInPlace(const AppUpdateInfo& info)
+{
+#if defined(Q_OS_WIN) && !defined(USE_PORTABLE_CONFIG)
+    const QString appDir = QCoreApplication::applicationDirPath();
+    if (QFileInfo::exists(
+          QDir(appDir).filePath(QStringLiteral("flameshot.ini")))) {
+        return false;
+    }
+    const QString localAppData = qEnvironmentVariable("LocalAppData");
+    const QString localPrograms =
+      localAppData.isEmpty()
+        ? QString()
+        : QDir(localAppData).filePath(QStringLiteral("Programs"));
+    return canInstallInPlaceForPaths(
+      info, appDir, qEnvironmentVariable("ProgramFiles"), localPrograms, false);
 #else
     Q_UNUSED(info);
     return false;
@@ -95,11 +133,17 @@ QString AppUpdate::installScript(qint64 pid,
              "$hash = Get-FileHash -LiteralPath %2 -Algorithm SHA256 "
              "-ErrorAction SilentlyContinue\n"
              "if (-not $hash -or $hash.Hash -ine %3) {\n"
+             "  Remove-Item -LiteralPath %2 -Force -ErrorAction "
+             "SilentlyContinue\n"
              "  Start-Process -FilePath explorer.exe -ArgumentList %5\n"
              "  exit 1\n"
              "}\n"
              "Start-Process -FilePath msiexec.exe -ArgumentList @('/i', %4, "
              "'/passive', '/norestart') -Wait\n"
+             "Remove-Item -LiteralPath %2 -Force -ErrorAction "
+             "SilentlyContinue\n"
+             "Remove-Item -LiteralPath (Split-Path -Parent %2) -Force "
+             "-ErrorAction SilentlyContinue\n"
              "Start-Process -FilePath explorer.exe -ArgumentList %5\n")
       .arg(QString::number(pid),
            literal(msiPath),

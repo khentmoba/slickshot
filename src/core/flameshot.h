@@ -87,6 +87,7 @@ private:
     // class members
     static Origin m_origin;
     bool m_haveExternalWidget;
+    bool m_guiOpening = false;
 
     QPointer<CaptureWidget> m_captureWindow;
     QPointer<InfoWindow> m_infoWindow;

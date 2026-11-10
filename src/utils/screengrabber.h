@@ -37,6 +37,10 @@ public:
     QScreen* getSelectedScreen() const;
     QPixmap selectMonitorAndCrop(const QPixmap& fullScreenshot, bool& ok);
 
+    static QList<QRect> computePhysicalScreenRects(
+      const QList<QRect>& logicalGeoms,
+      const QList<qreal>& dprs);
+
 protected:
     bool eventFilter(QObject* obj, QEvent* event) override;
 

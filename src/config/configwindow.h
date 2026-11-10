@@ -22,9 +22,11 @@ signals:
     void updateChildren();
 
 protected:
-    void keyPressEvent(QKeyEvent*);
+    void keyPressEvent(QKeyEvent*) override;
+    void changeEvent(QEvent* event) override;
 
 private:
+    void applyTheme();
     QTabWidget* m_tabWidget;
 
     FileNameEditor* m_filenameEditor;

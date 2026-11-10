@@ -29,6 +29,7 @@
 #include <QNetworkReply>
 #include <QTimer>
 #include <QUrl>
+#include <QVersionNumber>
 #endif
 
 #if defined(USE_KDSINGLEAPPLICATION) &&                                        \
@@ -226,9 +227,15 @@ void FlameshotDaemon::sendTrayNotification(const QString& text,
 #if !defined(DISABLE_UPDATE_CHECKER)
 void FlameshotDaemon::showUpdateNotificationIfAvailable(CaptureWidget* widget)
 {
-    if (!m_appLatestUrl.isEmpty() &&
-        ConfigHandler().ignoreUpdateToVersion().compare(m_appLatestVersion) <
-          0) {
+    if (!widget || m_appLatestUrl.isEmpty() || m_appLatestVersion.isEmpty()) {
+        return;
+    }
+    const QVersionNumber latestVersion =
+      QVersionNumber::fromString(m_appLatestVersion);
+    const QVersionNumber ignoredVersion =
+      QVersionNumber::fromString(ConfigHandler().ignoreUpdateToVersion());
+    if (Flameshot::instance()->getVersion() < latestVersion &&
+        (ignoredVersion.isNull() || ignoredVersion < latestVersion)) {
         widget->showAppUpdateNotification(latestUpdateInfo());
     }
 }
@@ -236,7 +243,7 @@ void FlameshotDaemon::showUpdateNotificationIfAvailable(CaptureWidget* widget)
 void FlameshotDaemon::getLatestAvailableVersion()
 {
     // This features is required for MacOS and Windows user and for Linux users
-    // who installed Flameshot not from the repository.
+    // who installed SlickShot not from the repository.
     QNetworkRequest requestCheckUpdates(QUrl(FLAMESHOT_APP_VERSION_URL));
     if (nullptr == m_networkCheckUpdates) {
         m_networkCheckUpdates = new QNetworkAccessManager(this);
@@ -248,7 +255,7 @@ void FlameshotDaemon::getLatestAvailableVersion()
     m_networkCheckUpdates->get(requestCheckUpdates);
 
     // check for updates each 24 hours
-    QTimer::singleShot(1000 * 60 * 60 * 24, [this]() {
+    QTimer::singleShot(1000 * 60 * 60 * 24, this, [this]() {
         if (ConfigHandler().checkForUpdates()) {
             this->getLatestAvailableVersion();
         }
@@ -265,28 +272,19 @@ AppUpdateInfo FlameshotDaemon::latestUpdateInfo() const
 
 void FlameshotDaemon::checkForUpdates()
 {
-    bool autoCheckEnabled = ConfigHandler().checkForUpdates();
+    const bool autoCheckEnabled = ConfigHandler().checkForUpdates();
 
-    if (autoCheckEnabled) {
-        if (!m_appLatestUrl.isEmpty()) {
+    if (autoCheckEnabled && !m_appLatestUrl.isEmpty()) {
+        const QVersionNumber latestVersion =
+          QVersionNumber::fromString(m_appLatestVersion);
+        if (Flameshot::instance()->getVersion() < latestVersion) {
             AppUpdateInstaller::openUpdate(latestUpdateInfo());
-        }
-    } else {
-        m_showManualCheckAppUpdateStatus = true;
-
-        if (m_appLatestUrl.isEmpty()) {
-            getLatestAvailableVersion();
-        } else {
-            QVersionNumber appLatestVersion =
-              QVersionNumber::fromString(m_appLatestVersion);
-            if (Flameshot::instance()->getVersion() < appLatestVersion) {
-                AppUpdateInstaller::openUpdate(latestUpdateInfo());
-            } else {
-                sendTrayNotification(tr("You have the latest version"),
-                                     "Flameshot");
-            }
+            return;
         }
     }
+
+    m_showManualCheckAppUpdateStatus = true;
+    getLatestAvailableVersion();
 }
 #endif
 
@@ -423,6 +421,8 @@ void FlameshotDaemon::enableTrayIcon(bool enable)
 #if !defined(DISABLE_UPDATE_CHECKER)
 void FlameshotDaemon::handleReplyCheckUpdates(QNetworkReply* reply)
 {
+    reply->deleteLater();
+
     if (!ConfigHandler().checkForUpdates() &&
         !m_showManualCheckAppUpdateStatus) {
         return;
@@ -431,22 +431,27 @@ void FlameshotDaemon::handleReplyCheckUpdates(QNetworkReply* reply)
     if (reply->error() == QNetworkReply::NoError) {
         QJsonDocument response = QJsonDocument::fromJson(reply->readAll());
         QJsonObject json = response.object();
-        m_appLatestVersion = json["tag_name"].toString().replace("v", "");
+        const AppUpdateInfo release = AppUpdate::releaseInfo(json);
+        m_appLatestVersion = release.version;
 
         QVersionNumber appLatestVersion =
           QVersionNumber::fromString(m_appLatestVersion);
         if (Flameshot::instance()->getVersion() < appLatestVersion) {
             emit newVersionAvailable(appLatestVersion);
-            m_appLatestUrl = json["html_url"].toString();
-            const AppUpdateInfo release = AppUpdate::releaseInfo(json);
+            m_appLatestUrl = release.pageUrl;
             m_appLatestInstallerUrl = release.installerUrl;
             m_appLatestChecksumUrl = release.checksumUrl;
             if (m_showManualCheckAppUpdateStatus) {
                 AppUpdateInstaller::openUpdate(latestUpdateInfo());
             }
-        } else if (m_showManualCheckAppUpdateStatus) {
-            sendTrayNotification(tr("You have the latest version"),
-                                 "Flameshot");
+        } else {
+            m_appLatestUrl.clear();
+            m_appLatestInstallerUrl.clear();
+            m_appLatestChecksumUrl.clear();
+            if (m_showManualCheckAppUpdateStatus) {
+                sendTrayNotification(tr("You have the latest version"),
+                                     QStringLiteral("SlickShot"));
+            }
         }
     } else {
         qWarning() << "Failed to get information about the latest version. "
@@ -455,7 +460,7 @@ void FlameshotDaemon::handleReplyCheckUpdates(QNetworkReply* reply)
             if (FlameshotDaemon::instance()) {
                 FlameshotDaemon::instance()->sendTrayNotification(
                   tr("Failed to get information about the latest version."),
-                  "Flameshot");
+                  QStringLiteral("SlickShot"));
             }
         }
     }

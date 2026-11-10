@@ -647,7 +647,9 @@ void CaptureWidget::uncheckActiveTool()
 {
     // uncheck active tool
     m_panel->setToolWidget(nullptr);
-    m_activeButton->setColor(m_uiColor);
+    if (m_activeButton) {
+        m_activeButton->setChecked(false);
+    }
     updateTool(activeButtonTool());
     m_activeButton = nullptr;
     releaseActiveTool();
@@ -813,14 +815,14 @@ void CaptureWidget::paintEvent(QPaintEvent* paintEvent)
 
     if (!isActiveWindow()) {
         drawErrorMessage(
-          tr("Flameshot has lost focus. Keyboard shortcuts won't "
+          tr("SlickShot has lost focus. Keyboard shortcuts won't "
              "work until you click somewhere."),
           &painter);
     } else if (m_configError) {
         drawErrorMessage(ConfigHandler().errorMessage(), &painter);
     } else if (m_configErrorResolved) {
-        drawErrorMessage(tr("Configuration error resolved. Launch `flameshot "
-                            "gui` again to apply it."),
+        drawErrorMessage(tr("Configuration error resolved. Launch SlickShot "
+                            "again to apply it."),
                          &painter);
     }
 }
@@ -1372,22 +1374,12 @@ void CaptureWidget::showAppUpdateNotification(const AppUpdateInfo& info)
     }
     if (nullptr == m_updateNotificationWidget) {
         m_updateNotificationWidget = new UpdateNotificationWidget(this, info);
-    }
-#if defined(Q_OS_MACOS)
-    int ax = (width() - m_updateNotificationWidget->width()) / 2;
-#else
-    QRect helpRect;
-    QScreen* currentScreen = QGuiAppCurrentScreen().currentScreen();
-    if (currentScreen) {
-        helpRect = currentScreen->geometry();
+        makeChild(m_updateNotificationWidget);
     } else {
-        helpRect = QGuiApplication::primaryScreen()->geometry();
+        m_updateNotificationWidget->setUpdateInfo(info);
     }
-    int ax = helpRect.left() +
-             ((helpRect.width() - m_updateNotificationWidget->width()) / 2);
-#endif
+    const int ax = qMax(0, (width() - m_updateNotificationWidget->width()) / 2);
     m_updateNotificationWidget->move(ax, 0);
-    makeChild(m_updateNotificationWidget);
     m_updateNotificationWidget->show();
 }
 #endif
@@ -1467,15 +1459,15 @@ void CaptureWidget::setState(CaptureToolButton* b)
     if (b->tool()->isSelectable()) {
         if (m_activeButton != b) {
             if (m_activeButton) {
-                m_activeButton->setColor(m_uiColor);
+                m_activeButton->setChecked(false);
             }
             m_activeButton = b;
-            m_activeButton->setColor(m_contrastUiColor);
+            m_activeButton->setChecked(true);
             m_panel->setActiveLayer(-1);
             m_panel->setToolWidget(b->tool()->configurationWidget());
         } else if (m_activeButton) {
             m_panel->clearToolWidget();
-            m_activeButton->setColor(m_uiColor);
+            m_activeButton->setChecked(false);
             m_activeButton = nullptr;
         }
         m_context.toolSize = ConfigHandler().toolSize(activeButtonToolType());
@@ -2165,6 +2157,9 @@ void CaptureWidget::togglePanel()
 void CaptureWidget::childEnter()
 {
     m_previewEnabled = false;
+    if (m_magnifier) {
+        m_magnifier->hide();
+    }
     updateTool(activeButtonTool());
 }
 

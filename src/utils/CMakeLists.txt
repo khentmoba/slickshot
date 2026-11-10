@@ -1,6 +1,6 @@
 # Required to generate MOC
 target_sources(
-  flameshot
+  flameshot_lib
   PRIVATE abstractlogger.h
           filenamehandler.h
           screengrabber.h
@@ -12,7 +12,7 @@ target_sources(
 )
 
 target_sources(
-  flameshot
+  flameshot_lib
   PRIVATE abstractlogger.cpp
           filenamehandler.cpp
           screengrabber.cpp
@@ -34,7 +34,7 @@ target_sources(
 
 IF (UNIX AND NOT APPLE)
 target_sources(
-  flameshot
+  flameshot_lib
   PRIVATE request.h
           request.cpp
 )
@@ -42,14 +42,14 @@ ENDIF()
 
 IF (WIN32)
   target_sources(
-    flameshot
+    flameshot_lib
     PRIVATE winlnkfileparse.cpp
   )
 ENDIF()
 
 if (NOT DISABLE_UPDATE_CHECKER)
   target_sources(
-    flameshot
+    flameshot_lib
     PRIVATE appupdate.h
             appupdate.cpp
   )

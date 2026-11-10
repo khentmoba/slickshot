@@ -123,11 +123,12 @@ void TrayIcon::initMenu()
             // the QMenu)
             QTimer::singleShot(400, this, [this]() { startGuiCapture(); });
         }
+#elif defined(Q_OS_WIN)
+        // Brief delay to allow tray QMenu to dismiss before desktop grab
+        QTimer::singleShot(120, this, [this]() { startGuiCapture(); });
 #else
-    // Wait 400 ms to hide the QMenu
-    QTimer::singleShot(400, this, [this]() {
-        startGuiCapture();
-    });
+        // Wait 400 ms to hide the QMenu
+        QTimer::singleShot(400, this, [this]() { startGuiCapture(); });
 #endif
     });
     m_launcherAction = new QAction(tr("&Open Launcher"), this);
@@ -281,15 +282,12 @@ void TrayIcon::initScreenMenu()
 
 void TrayIcon::startGuiCapture()
 {
-    auto* widget = Flameshot::instance()->gui();
-#if !defined(DISABLE_UPDATE_CHECKER)
-    FlameshotDaemon::instance()->showUpdateNotificationIfAvailable(widget);
-#endif
+    Flameshot::instance()->gui();
 }
 
 void TrayIcon::startGuiCaptureOnScreen(int screenIndex)
 {
-    CaptureRequest req(CaptureRequest::GRAPHICAL_MODE, 400);
+    CaptureRequest req(CaptureRequest::GRAPHICAL_MODE);
     req.setSelectedMonitor(screenIndex);
     Flameshot::instance()->requestCapture(req);
 }

@@ -1,1 +1,1 @@
-target_sources(flameshot PRIVATE commandlineparser.cpp commandoption.cpp commandargument.cpp)
+target_sources(flameshot_lib PRIVATE commandlineparser.cpp commandoption.cpp commandargument.cpp)

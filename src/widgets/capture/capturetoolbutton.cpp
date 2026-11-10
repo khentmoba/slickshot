@@ -47,6 +47,9 @@ void CaptureToolButton::initButton()
     }
     m_tool = ToolFactory().CreateTool(m_buttonType, this);
 
+    setCheckable(m_tool && m_tool->isSelectable());
+    setGraphicsEffect(nullptr);
+
     resize(GlobalValues::buttonBaseSize(), GlobalValues::buttonBaseSize());
     // Modern Windows 11 Fluent rounded-rect style (no circular ellipse mask)
 
@@ -70,6 +73,9 @@ void CaptureToolButton::initButton()
     m_emergeAnimation->setStartValue(QSize(0, 0));
     m_emergeAnimation->setEndValue(
       QSize(GlobalValues::buttonBaseSize(), GlobalValues::buttonBaseSize()));
+    connect(m_emergeAnimation, &QPropertyAnimation::finished, this, [this]() {
+        updateIcon();
+    });
 }
 
 void CaptureToolButton::updateIcon()
@@ -113,10 +119,6 @@ void CaptureToolButton::animatedShow()
     if (!isVisible()) {
         show();
         m_emergeAnimation->start();
-        connect(m_emergeAnimation,
-                &QPropertyAnimation::finished,
-                this,
-                [this]() { updateIcon(); });
     }
 }
 

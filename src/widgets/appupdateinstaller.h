@@ -2,8 +2,11 @@
 
 #include "utils/appupdate.h"
 
-#include <QByteArray>
+#include <QCryptographicHash>
+#include <QFile>
 #include <QObject>
+
+#include <memory>
 
 class QNetworkAccessManager;
 class QNetworkReply;
@@ -28,7 +31,8 @@ private:
     void confirmAndDownload();
     void downloadChecksum();
     void downloadInstaller();
-    void install(const QByteArray& msi);
+    void install();
+    void cleanupInstallerFile();
     void fail(const QString& message);
     QNetworkReply* get(const QUrl& url);
 
@@ -36,7 +40,10 @@ private:
     QNetworkAccessManager* m_network;
     QNetworkReply* m_reply;
     QProgressDialog* m_progress;
+    std::unique_ptr<QFile> m_msiFile;
+    QCryptographicHash m_hash;
     QString m_expectedSha256;
     QString m_msiPath;
     bool m_canceled;
+    bool m_writeError;
 };

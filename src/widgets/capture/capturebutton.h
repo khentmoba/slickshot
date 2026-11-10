@@ -24,7 +24,7 @@ public:
     void setColor(const QColor& c);
 
 private:
-    static QColor m_mainColor;
+    QColor m_mainColor;
 
     void init();
 };

@@ -6,6 +6,9 @@
 class SnippingToolManager
 {
 public:
+    static bool commandMatchesAppPath(const QString& command,
+                                      const QString& expectedAppPath);
+
 #if defined(Q_OS_WIN)
     // Check if SlickShot is currently registered to replace Windows Snipping
     // Tool

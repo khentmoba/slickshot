@@ -19,9 +19,16 @@ namespace AppUpdate {
 
 AppUpdateInfo releaseInfo(const QJsonObject& release);
 
-// True only for a copy installed under Program Files on Windows, which the MSI
-// can replace.
+// True only for a non-portable copy installed under Program Files or
+// %LocalAppData%\Programs on Windows, which the MSI can replace.
 bool canInstallInPlace(const AppUpdateInfo& info);
+
+// Testable path predicate underlying canInstallInPlace().
+bool canInstallInPlaceForPaths(const AppUpdateInfo& info,
+                               const QString& appDir,
+                               const QString& programFiles,
+                               const QString& localPrograms,
+                               bool isPortable = false);
 
 // Returns the first 64-hex-digit digest of a sha256sum file, lowercase, or
 // empty.

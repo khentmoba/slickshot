@@ -106,6 +106,8 @@ if(MSVC)
     endif()
 endif()
 
+add_library(flameshot_lib OBJECT)
+
 add_subdirectory(cli)
 add_subdirectory(config)
 add_subdirectory(core)
@@ -169,6 +171,7 @@ endif ()
 target_sources(
         flameshot
         PRIVATE
+        $<TARGET_OBJECTS:flameshot_lib>
         ${CMAKE_CURRENT_SOURCE_DIR}/../data/graphics.qrc
         ${CMAKE_CURRENT_SOURCE_DIR}/../data/flameshot.rc # windows binary icon resource file
         ${QM_FILES}
@@ -182,6 +185,21 @@ if (APPLE)
 endif ()
 
 
+target_include_directories(flameshot_lib PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/>  # src/
+    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/>
+)
+
+target_link_libraries(
+        flameshot_lib
+        PUBLIC
+        project_warnings
+        project_options
+        Qt${QT_VERSION_MAJOR}::Svg
+        Qt${QT_VERSION_MAJOR}::Network
+        Qt${QT_VERSION_MAJOR}::Widgets
+        QtColorWidgets
+)
 target_include_directories(flameshot PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/>  # src/
     $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/>
@@ -198,6 +216,11 @@ target_link_libraries(
 )
 if (UNIX)
 target_link_libraries(
+        flameshot_lib
+        PUBLIC
+        Qt${QT_VERSION_MAJOR}::DBus
+)
+target_link_libraries(
         flameshot
         Qt${QT_VERSION_MAJOR}::DBus
 )
@@ -208,9 +231,15 @@ if (USE_KDSINGLEAPPLICATION)
   add_compile_definitions(USE_KDSINGLEAPPLICATION=1)
 
   if (USE_BUNDLED_KDSINGLEAPPLICATION)
+    target_include_directories(flameshot_lib PUBLIC ${kdsingleapplication_SOURCE_DIR} ${kdsingleapplication_BINARY_DIR})
     target_include_directories(flameshot PRIVATE ${kdsingleapplication_SOURCE_DIR} ${kdsingleapplication_BINARY_DIR})
   endif()
 
+  target_link_libraries(
+          flameshot_lib
+          PUBLIC
+          KDAB::kdsingleapplication
+  )
   target_link_libraries(
           flameshot
           KDAB::kdsingleapplication
@@ -218,6 +247,8 @@ if (USE_KDSINGLEAPPLICATION)
 endif()
 
 if (USE_WAYLAND_CLIPBOARD)
+  target_compile_definitions(flameshot_lib PUBLIC USE_WAYLAND_CLIPBOARD=1)
+  target_link_libraries(flameshot_lib PUBLIC KF6::GuiAddons)
   target_compile_definitions(flameshot PRIVATE USE_WAYLAND_CLIPBOARD=1)
   target_link_libraries(flameshot KF6::GuiAddons)
 endif()
@@ -233,6 +264,11 @@ if (APPLE)
     ) 
     set_property(TARGET flameshot PROPERTY
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/packaging/macos/Info.plist.in
+    )
+    target_link_libraries(
+            flameshot_lib
+            PUBLIC
+            qhotkey
     )
     target_link_libraries(
             flameshot
@@ -266,6 +302,11 @@ if (WIN32)
     endif ()
 
     target_link_libraries(
+            flameshot_lib
+            PUBLIC
+            qhotkey
+    )
+    target_link_libraries(
             flameshot
             qhotkey
     )
@@ -278,6 +319,7 @@ else()
     set(FLAMESHOT_PREDEFINED_COLOR_PALETTE_LARGE false)
 endif()
 message("Flameshot predefined color palette large: " ${FLAMESHOT_PREDEFINED_COLOR_PALETTE_LARGE})
+target_compile_definitions(flameshot_lib PUBLIC PREDEFINED_COLOR_PALETTE_LARGE=${FLAMESHOT_PREDEFINED_COLOR_PALETTE_LARGE})
 target_compile_definitions(flameshot PRIVATE PREDEFINED_COLOR_PALETTE_LARGE=${FLAMESHOT_PREDEFINED_COLOR_PALETTE_LARGE})
 
 
@@ -285,28 +327,36 @@ find_package (Git)
 if( DEFINED ENV{GIT_HASH})
     message("Using provided git_commit_hash: $ENV{GIT_HASH}")
     set(FLAMESHOT_GIT_HASH $ENV{GIT_HASH})
+    target_compile_definitions(flameshot_lib PUBLIC FLAMESHOT_GIT_HASH="${FLAMESHOT_GIT_HASH}")
     target_compile_definitions(flameshot PRIVATE FLAMESHOT_GIT_HASH="${FLAMESHOT_GIT_HASH}")
 elseif (GIT_FOUND)
     message("git found: ${GIT_EXECUTABLE} in version     ${GIT_VERSION_STRING}")
     execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD OUTPUT_VARIABLE FLAMESHOT_GIT_HASH)
     string(REGEX REPLACE "\r*\n$" "" FLAMESHOT_GIT_HASH "${FLAMESHOT_GIT_HASH}")
+    target_compile_definitions(flameshot_lib PUBLIC FLAMESHOT_GIT_HASH="${FLAMESHOT_GIT_HASH}")
     target_compile_definitions(flameshot PRIVATE FLAMESHOT_GIT_HASH="${FLAMESHOT_GIT_HASH}")
     message("FLAMESHOT_GIT_HASH: ${FLAMESHOT_GIT_HASH}")
 else()
+    target_compile_definitions(flameshot_lib PUBLIC FLAMESHOT_GIT_HASH="-")
     target_compile_definitions(flameshot PRIVATE FLAMESHOT_GIT_HASH="-")
     message(WARNING "Compiling without git commit hash")
 endif ()
 
+target_compile_definitions(flameshot_lib PUBLIC APP_PREFIX="${CMAKE_INSTALL_PREFIX}")
+target_compile_definitions(flameshot_lib PUBLIC APP_VERSION="v${PROJECT_VERSION}")
+target_compile_definitions(flameshot_lib PUBLIC FLAMESHOT_APP_VERSION_URL="${GIT_API_URL}")
 target_compile_definitions(flameshot PRIVATE APP_PREFIX="${CMAKE_INSTALL_PREFIX}")
 target_compile_definitions(flameshot PRIVATE APP_VERSION="v${PROJECT_VERSION}")
 #target_compile_definitions(flameshot PRIVATE QAPPLICATION_CLASS=QApplication)
 target_compile_definitions(flameshot PRIVATE FLAMESHOT_APP_VERSION_URL="${GIT_API_URL}")
 # Enable easier debugging of screenshot capture mode
 if (FLAMESHOT_DEBUG_CAPTURE)
+    target_compile_definitions(flameshot_lib PUBLIC FLAMESHOT_DEBUG_CAPTURE)
     target_compile_definitions(flameshot PRIVATE FLAMESHOT_DEBUG_CAPTURE)
 endif ()
 
 if (USE_MONOCHROME_ICON)
+    target_compile_definitions(flameshot_lib PUBLIC USE_MONOCHROME_ICON)
     target_compile_definitions(flameshot PRIVATE USE_MONOCHROME_ICON)
 endif ()
 

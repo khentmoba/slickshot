@@ -22,6 +22,7 @@
 #include "utils/snippingtoolmanager.h"
 #include "utils/themeutils.h"
 #include "utils/valuehandler.h"
+#include "widgets/capture/capturebutton.h"
 
 #if !(defined(Q_OS_MACOS) || defined(Q_OS_WIN))
 #include "core/flameshotdbusadapter.h"
@@ -34,6 +35,9 @@
 #include <QLibraryInfo>
 #include <QNetworkProxyFactory>
 #include <QSharedMemory>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+#include <QStyleHints>
+#endif
 #include <QTimer>
 #include <QTranslator>
 
@@ -196,6 +200,18 @@ void configureApp(bool gui, QTranslator& translator, QTranslator& qtTranslator)
         QApplication::setStyle(new StyleOverride);
 #endif
         ThemeUtils::applyApplicationTheme();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+        QObject::connect(
+          QGuiApplication::styleHints(),
+          &QStyleHints::colorSchemeChanged,
+          qApp,
+          [](Qt::ColorScheme) {
+              ThemeUtils::applyApplicationTheme();
+              if (auto* app = qobject_cast<QApplication*>(qApp)) {
+                  app->setStyleSheet(CaptureButton::globalStyleSheet());
+              }
+          });
+#endif
     }
 
     auto app = QCoreApplication::instance();
@@ -304,10 +320,22 @@ int main(int argc, char* argv[])
 
     if (isScreenclipUri) {
         new QApplication(argc, argv);
-        configureApp(true, translator, qtTranslator);
-#if defined(Q_OS_WIN)
-        SnippingToolManager::autoConfigureOnStartup();
+#ifdef USE_KDSINGLEAPPLICATION
+        {
+            auto kdsa =
+              KDSingleApplication(QStringLiteral("org.flameshot.Flameshot"));
+            if (!kdsa.isPrimaryInstance()) {
+                QByteArray data;
+                QDataStream stream(&data, QIODevice::WriteOnly);
+                stream << QStringLiteral("requestCapture");
+                kdsa.sendMessage(data);
+                delete qApp;
+                return 0;
+            }
+        }
 #endif
+        configureApp(true, translator, qtTranslator);
+        SnippingToolManager::autoConfigureOnStartup();
         Flameshot::setOrigin(Flameshot::CLI);
 
         if (!ConfigHandler().allowMultipleGuiInstances()) {

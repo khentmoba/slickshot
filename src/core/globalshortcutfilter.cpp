@@ -26,6 +26,10 @@ LRESULT CALLBACK GlobalShortcutFilter::lowLevelKeyboardProc(int nCode,
     if (nCode == HC_ACTION && s_filterInstance) {
         KBDLLHOOKSTRUCT* pKey = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
 
+        if ((pKey->flags & LLKHF_INJECTED) != 0) {
+            return CallNextHookEx(s_keyboardHook, nCode, wParam, lParam);
+        }
+
         if (s_replaceSnippingTool) {
             bool winDown = (GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 ||
                            (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0;
@@ -38,21 +42,32 @@ LRESULT CALLBACK GlobalShortcutFilter::lowLevelKeyboardProc(int nCode,
             if (pKey->vkCode == 'S' || pKey->vkCode == 's') {
                 if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
                     if (winDown && shiftDown && !ctrlDown && !altDown) {
+                        const bool isRepeat =
+                          s_winShiftSConsumed &&
+                          ((GetAsyncKeyState('S') & 0x8000) != 0);
                         s_winShiftSConsumed = true;
+                        if (!isRepeat) {
+                            // Suppress Start Menu without triggering Ctrl+Shift
+                            // keyboard layout switches
+                            INPUT inputs[2] = {};
+                            inputs[0].type = INPUT_KEYBOARD;
+                            inputs[0].ki.wVk = 0xFF;
+                            inputs[1].type = INPUT_KEYBOARD;
+                            inputs[1].ki.wVk = 0xFF;
+                            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+                            SendInput(2, inputs, sizeof(INPUT));
 
-                        // Suppress Start Menu popping up on Win key release
-                        keybd_event(VK_CONTROL, 0, 0, 0);
-                        keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0);
-
-                        // Asynchronously trigger capture so hook returns
-                        // immediately (< 1ms)
-                        QMetaObject::invokeMethod(
-                          qApp,
-                          []() {
-                              Flameshot::instance()->requestCapture(
-                                CaptureRequest(CaptureRequest::GRAPHICAL_MODE));
-                          },
-                          Qt::QueuedConnection);
+                            // Asynchronously trigger capture so hook returns
+                            // immediately (< 1ms)
+                            QMetaObject::invokeMethod(
+                              qApp,
+                              []() {
+                                  Flameshot::instance()->requestCapture(
+                                    CaptureRequest(
+                                      CaptureRequest::GRAPHICAL_MODE));
+                              },
+                              Qt::QueuedConnection);
+                        }
 
                         return 1; // Consume key! Windows Snipping Tool never
                                   // receives it
@@ -69,32 +84,37 @@ LRESULT CALLBACK GlobalShortcutFilter::lowLevelKeyboardProc(int nCode,
             if (pKey->vkCode == VK_SNAPSHOT) {
                 if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
                     if (!winDown && !ctrlDown && !altDown) {
+                        const bool isRepeat =
+                          s_prntScrConsumed &&
+                          ((GetAsyncKeyState(VK_SNAPSHOT) & 0x8000) != 0);
                         s_prntScrConsumed = true;
-                        if (shiftDown) {
+                        if (!isRepeat) {
+                            if (shiftDown) {
 #ifdef ENABLE_IMGUR
-                            QMetaObject::invokeMethod(
-                              qApp,
-                              []() { Flameshot::instance()->history(); },
-                              Qt::QueuedConnection);
+                                QMetaObject::invokeMethod(
+                                  qApp,
+                                  []() { Flameshot::instance()->history(); },
+                                  Qt::QueuedConnection);
 #else
-                            QMetaObject::invokeMethod(
-                              qApp,
-                              []() {
-                                  Flameshot::instance()->requestCapture(
-                                    CaptureRequest(
-                                      CaptureRequest::GRAPHICAL_MODE));
-                              },
-                              Qt::QueuedConnection);
+                                QMetaObject::invokeMethod(
+                                  qApp,
+                                  []() {
+                                      Flameshot::instance()->requestCapture(
+                                        CaptureRequest(
+                                          CaptureRequest::GRAPHICAL_MODE));
+                                  },
+                                  Qt::QueuedConnection);
 #endif
-                        } else {
-                            QMetaObject::invokeMethod(
-                              qApp,
-                              []() {
-                                  Flameshot::instance()->requestCapture(
-                                    CaptureRequest(
-                                      CaptureRequest::GRAPHICAL_MODE));
-                              },
-                              Qt::QueuedConnection);
+                            } else {
+                                QMetaObject::invokeMethod(
+                                  qApp,
+                                  []() {
+                                      Flameshot::instance()->requestCapture(
+                                        CaptureRequest(
+                                          CaptureRequest::GRAPHICAL_MODE));
+                                  },
+                                  Qt::QueuedConnection);
+                            }
                         }
                         return 1; // Consume key!
                     }
@@ -109,6 +129,19 @@ LRESULT CALLBACK GlobalShortcutFilter::lowLevelKeyboardProc(int nCode,
     }
     return CallNextHookEx(s_keyboardHook, nCode, wParam, lParam);
 }
+
+void GlobalShortcutFilter::syncHotkeys()
+{
+    UnregisterHotKey(NULL, 1);
+    UnregisterHotKey(NULL, 2);
+    UnregisterHotKey(NULL, 3);
+    if (s_replaceSnippingTool) {
+        // Fallback hotkeys in case hook is temporarily bypassed
+        RegisterHotKey(NULL, 1, 0, VK_SNAPSHOT);
+        RegisterHotKey(NULL, 2, MOD_SHIFT, VK_SNAPSHOT);
+        RegisterHotKey(NULL, 3, MOD_WIN | MOD_SHIFT, 'S');
+    }
+}
 #endif
 
 GlobalShortcutFilter::GlobalShortcutFilter(QObject* parent)
@@ -120,12 +153,7 @@ GlobalShortcutFilter::GlobalShortcutFilter(QObject* parent)
     s_keyboardHook = SetWindowsHookEx(
       WH_KEYBOARD_LL, lowLevelKeyboardProc, GetModuleHandle(NULL), 0);
 
-    // Fallback hotkeys in case hook is temporarily bypassed
-    RegisterHotKey(NULL, 1, 0, VK_SNAPSHOT);
-    RegisterHotKey(NULL, 2, MOD_SHIFT, VK_SNAPSHOT);
-    if (s_replaceSnippingTool) {
-        RegisterHotKey(NULL, 3, MOD_WIN | MOD_SHIFT, 'S');
-    }
+    syncHotkeys();
 
     connect(ConfigHandler::getInstance(),
             &ConfigHandler::fileChanged,
@@ -134,11 +162,9 @@ GlobalShortcutFilter::GlobalShortcutFilter(QObject* parent)
                 bool newVal = ConfigHandler().replaceSnippingTool();
                 if (newVal != s_replaceSnippingTool) {
                     s_replaceSnippingTool = newVal;
-                    if (s_replaceSnippingTool) {
-                        RegisterHotKey(NULL, 3, MOD_WIN | MOD_SHIFT, 'S');
-                    } else {
-                        UnregisterHotKey(NULL, 3);
-                    }
+                    s_winShiftSConsumed = false;
+                    s_prntScrConsumed = false;
+                    syncHotkeys();
                 }
             });
 #endif
@@ -179,20 +205,20 @@ bool GlobalShortcutFilter::nativeEventFilter(const QByteArray& eventType,
                   CaptureRequest(CaptureRequest::GRAPHICAL_MODE));
                 return true;
             }
-        }
 
 #ifdef ENABLE_IMGUR
-        // Show screenshots history
-        if (VK_SNAPSHOT == keycode && MOD_SHIFT == modifiers) {
-            Flameshot::instance()->history();
-            return true;
-        }
+            // Show screenshots history
+            if (VK_SNAPSHOT == keycode && MOD_SHIFT == modifiers) {
+                Flameshot::instance()->history();
+                return true;
+            }
 #endif
-        // Capture screen
-        if (VK_SNAPSHOT == keycode && 0 == modifiers) {
-            Flameshot::instance()->requestCapture(
-              CaptureRequest(CaptureRequest::GRAPHICAL_MODE));
-            return true;
+            // Capture screen
+            if (VK_SNAPSHOT == keycode && 0 == modifiers) {
+                Flameshot::instance()->requestCapture(
+                  CaptureRequest(CaptureRequest::GRAPHICAL_MODE));
+                return true;
+            }
         }
     }
 #endif

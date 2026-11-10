@@ -21,6 +21,7 @@
 #include <QTimer>
 #include <QWidget>
 #include <algorithm>
+#include <numeric>
 
 #ifdef FLAMESHOT_DEBUG_CAPTURE
 #include <QDebug>
@@ -331,6 +332,33 @@ QPixmap ScreenGrabber::grabEntireDesktop(bool& ok, int preSelectedMonitor)
         return QPixmap();
     }
 #elif defined(Q_OS_WIN)
+    const QList<QScreen*> screens = QGuiApplication::screens();
+    if (screens.isEmpty()) {
+        ok = false;
+        return QPixmap();
+    }
+    int targetMonitor = -1;
+    if (preSelectedMonitor >= 0 && preSelectedMonitor < screens.size()) {
+        targetMonitor = preSelectedMonitor;
+    } else if (screens.size() == 1) {
+        targetMonitor = 0;
+    } else if (ConfigHandler().captureActiveMonitor()) {
+        QScreen* cursorScreen = QGuiAppCurrentScreen().currentScreen();
+        targetMonitor = screens.indexOf(cursorScreen);
+        if (targetMonitor < 0) {
+            targetMonitor = 0;
+        }
+    }
+    if (targetMonitor >= 0) {
+        QScreen* target = screens[targetMonitor];
+        m_selectedMonitor = targetMonitor;
+        screenshot = target->grabWindow(wid);
+        ok = !screenshot.isNull();
+        if (ok) {
+            screenshot.setDevicePixelRatio(target->devicePixelRatio());
+        }
+        return screenshot;
+    }
     screenshot = windowsScreenshot(wid);
 #endif
 
@@ -698,27 +726,23 @@ QPixmap ScreenGrabber::cropToMonitor(const QPixmap& fullScreenshot,
     cropWidth = qRound(targetGeometry.width() * screenshotScaleX);
     cropHeight = qRound(targetGeometry.height() * screenshotScaleY);
 #else
-    // Windows: Calculate physical pixel positions for mixed DPI
-    cropX = 0;
-    cropY = 0;
-
+    // Windows: Calculate physical pixel positions for mixed DPI using shared
+    // multi-monitor layout math (handles stacked monitors without double-count)
+    QList<QRect> logicalGeoms;
+    QList<qreal> dprs;
+    logicalGeoms.reserve(screens.size());
+    dprs.reserve(screens.size());
     for (QScreen* screen : screens) {
-        QRect geom = screen->geometry();
-        qreal dpr = screen->devicePixelRatio();
-
-        // Sum physical widths of screens completely to the left
-        if (geom.x() + geom.width() <= targetGeometry.x()) {
-            cropX += qRound(geom.width() * dpr);
-        }
-
-        // Sum physical heights of screens completely above
-        if (geom.y() + geom.height() <= targetGeometry.y()) {
-            cropY += qRound(geom.height() * dpr);
-        }
+        logicalGeoms.append(screen->geometry());
+        dprs.append(screen->devicePixelRatio());
     }
-
-    cropWidth = qRound(targetGeometry.width() * targetDpr);
-    cropHeight = qRound(targetGeometry.height() * targetDpr);
+    const QList<QRect> physRects =
+      computePhysicalScreenRects(logicalGeoms, dprs);
+    const QRect targetPhys = physRects[monitorIndex];
+    cropX = targetPhys.x();
+    cropY = targetPhys.y();
+    cropWidth = targetPhys.width();
+    cropHeight = targetPhys.height();
 
 #ifdef FLAMESHOT_DEBUG_CAPTURE
     qDebug() << tr("Calculated crop position for mixed DPI: X=%1 Y=%2")
@@ -778,65 +802,161 @@ QPixmap ScreenGrabber::cropToMonitor(const QPixmap& fullScreenshot,
     return cropped;
 }
 
-QPixmap ScreenGrabber::windowsScreenshot(int wid)
+QList<QRect> ScreenGrabber::computePhysicalScreenRects(
+  const QList<QRect>& logicalGeoms,
+  const QList<qreal>& dprs)
 {
-    const QList<QScreen*> screens = QGuiApplication::screens();
-    QRect geometry = desktopGeometry();
+    const int n = logicalGeoms.size();
+    QList<QRect> result(n);
+    if (n == 0 || dprs.size() != n) {
+        return result;
+    }
 
-    int canvasWidth = 0;
-    int canvasHeight = 0;
+    QList<int> physW(n), physH(n), physX(n, 0), physY(n, 0);
+    for (int i = 0; i < n; ++i) {
+        physW[i] = qRound(logicalGeoms[i].width() * dprs[i]);
+        physH[i] = qRound(logicalGeoms[i].height() * dprs[i]);
+    }
 
-    // Build a map tracking where each screen should be positioned in
-    // physical pixels
-    struct ScreenInfo
-    {
-        QRect physicalRect; // Where to draw in the canvas
-        QPixmap pixmap;
-    };
-    QMap<QScreen*, ScreenInfo> screenInfos;
+    // Compute physical X in left-to-right topological order
+    QList<int> orderX(n);
+    std::iota(orderX.begin(), orderX.end(), 0);
+    std::sort(orderX.begin(), orderX.end(), [&](int a, int b) {
+        if (logicalGeoms[a].x() != logicalGeoms[b].x()) {
+            return logicalGeoms[a].x() < logicalGeoms[b].x();
+        }
+        return logicalGeoms[a].y() < logicalGeoms[b].y();
+    });
 
-    int minLogicalX = geometry.x();
-    int minLogicalY = geometry.y();
+    for (int idx = 0; idx < n; ++idx) {
+        const int i = orderX[idx];
+        const QRect& gi = logicalGeoms[i];
+        bool hasOverlapLeft = false;
+        bool hasAnyLeft = false;
+        int maxOverlapRight = 0;
+        int maxAnyRight = 0;
+        int partialX = -1;
 
-    for (QScreen* screen : screens) {
-        QRect screenGeom = screen->geometry();
-        qreal screenDpr = screen->devicePixelRatio();
-
-        QPixmap screenPixmap = screen->grabWindow(wid);
-        screenPixmap.setDevicePixelRatio(1.0);
-
-        int logicalX = screenGeom.x() - minLogicalX;
-        int logicalY = screenGeom.y() - minLogicalY;
-
-        int physicalWidth = screenPixmap.width();
-        int physicalHeight = screenPixmap.height();
-
-        int physicalX = 0;
-        int physicalY = 0;
-
-        for (QScreen* otherScreen : screens) {
-            QRect otherGeom = otherScreen->geometry();
-            qreal otherDpr = otherScreen->devicePixelRatio();
-
-            // If this screen is entirely to the left of current screen
-            if (otherGeom.x() + otherGeom.width() <= screenGeom.x()) {
-                physicalX += qRound(otherGeom.width() * otherDpr);
-            }
-
-            // If this screen is entirely above the current screen
-            if (otherGeom.y() + otherGeom.height() <= screenGeom.y()) {
-                physicalY += qRound(otherGeom.height() * otherDpr);
+        for (int p = 0; p < idx; ++p) {
+            const int j = orderX[p];
+            const QRect& gj = logicalGeoms[j];
+            const bool overlapsY =
+              gj.y() < gi.y() + gi.height() && gj.y() + gj.height() > gi.y();
+            if (gj.x() + gj.width() <= gi.x()) {
+                const int right = physX[j] + physW[j];
+                if (overlapsY) {
+                    maxOverlapRight =
+                      hasOverlapLeft ? qMax(maxOverlapRight, right) : right;
+                    hasOverlapLeft = true;
+                }
+                maxAnyRight = hasAnyLeft ? qMax(maxAnyRight, right) : right;
+                hasAnyLeft = true;
+            } else if (overlapsY && gj.x() < gi.x()) {
+                partialX = qMax(partialX,
+                                physX[j] + qRound((gi.x() - gj.x()) * dprs[j]));
             }
         }
 
-        ScreenInfo info;
-        info.physicalRect =
-          QRect(physicalX, physicalY, physicalWidth, physicalHeight);
-        info.pixmap = screenPixmap;
-        screenInfos[screen] = info;
+        if (partialX >= 0) {
+            physX[i] = partialX;
+        } else if (hasOverlapLeft) {
+            physX[i] = maxOverlapRight;
+        } else if (hasAnyLeft) {
+            physX[i] = maxAnyRight;
+        } else {
+            physX[i] = 0;
+        }
+    }
 
-        canvasWidth = qMax(canvasWidth, physicalX + physicalWidth);
-        canvasHeight = qMax(canvasHeight, physicalY + physicalHeight);
+    // Compute physical Y in top-to-bottom topological order
+    QList<int> orderY(n);
+    std::iota(orderY.begin(), orderY.end(), 0);
+    std::sort(orderY.begin(), orderY.end(), [&](int a, int b) {
+        if (logicalGeoms[a].y() != logicalGeoms[b].y()) {
+            return logicalGeoms[a].y() < logicalGeoms[b].y();
+        }
+        return logicalGeoms[a].x() < logicalGeoms[b].x();
+    });
+
+    for (int idx = 0; idx < n; ++idx) {
+        const int i = orderY[idx];
+        const QRect& gi = logicalGeoms[i];
+        bool hasOverlapAbove = false;
+        bool hasAnyAbove = false;
+        int maxOverlapBottom = 0;
+        int maxAnyBottom = 0;
+        int partialY = -1;
+
+        for (int p = 0; p < idx; ++p) {
+            const int j = orderY[p];
+            const QRect& gj = logicalGeoms[j];
+            const bool overlapsX =
+              gj.x() < gi.x() + gi.width() && gj.x() + gj.width() > gi.x();
+            if (gj.y() + gj.height() <= gi.y()) {
+                const int bottom = physY[j] + physH[j];
+                if (overlapsX) {
+                    maxOverlapBottom =
+                      hasOverlapAbove ? qMax(maxOverlapBottom, bottom) : bottom;
+                    hasOverlapAbove = true;
+                }
+                maxAnyBottom =
+                  hasAnyAbove ? qMax(maxAnyBottom, bottom) : bottom;
+                hasAnyAbove = true;
+            } else if (overlapsX && gj.y() < gi.y()) {
+                partialY = qMax(partialY,
+                                physY[j] + qRound((gi.y() - gj.y()) * dprs[j]));
+            }
+        }
+
+        if (partialY >= 0) {
+            physY[i] = partialY;
+        } else if (hasOverlapAbove) {
+            physY[i] = maxOverlapBottom;
+        } else if (hasAnyAbove) {
+            physY[i] = maxAnyBottom;
+        } else {
+            physY[i] = 0;
+        }
+    }
+
+    for (int i = 0; i < n; ++i) {
+        result[i] = QRect(physX[i], physY[i], physW[i], physH[i]);
+    }
+    return result;
+}
+
+QPixmap ScreenGrabber::windowsScreenshot(int wid)
+{
+    const QList<QScreen*> screens = QGuiApplication::screens();
+    if (screens.isEmpty()) {
+        return QPixmap();
+    }
+
+    QList<QRect> logicalGeoms;
+    QList<qreal> dprs;
+    QList<QPixmap> screenPixmaps;
+    logicalGeoms.reserve(screens.size());
+    dprs.reserve(screens.size());
+    screenPixmaps.reserve(screens.size());
+
+    for (QScreen* screen : screens) {
+        logicalGeoms.append(screen->geometry());
+        dprs.append(screen->devicePixelRatio());
+        QPixmap screenPixmap = screen->grabWindow(wid);
+        screenPixmap.setDevicePixelRatio(1.0);
+        screenPixmaps.append(screenPixmap);
+    }
+
+    const QList<QRect> physRects =
+      computePhysicalScreenRects(logicalGeoms, dprs);
+
+    int canvasWidth = 0;
+    int canvasHeight = 0;
+    for (int i = 0; i < screens.size(); ++i) {
+        canvasWidth =
+          qMax(canvasWidth, physRects[i].x() + screenPixmaps[i].width());
+        canvasHeight =
+          qMax(canvasHeight, physRects[i].y() + screenPixmaps[i].height());
     }
 
     // Composite all screens onto canvas
@@ -846,9 +966,8 @@ QPixmap ScreenGrabber::windowsScreenshot(int wid)
     QPainter painter(&desktop);
     painter.setCompositionMode(QPainter::CompositionMode_Source);
 
-    for (QScreen* screen : screens) {
-        const ScreenInfo& info = screenInfos[screen];
-        painter.drawPixmap(info.physicalRect.topLeft(), info.pixmap);
+    for (int i = 0; i < screens.size(); ++i) {
+        painter.drawPixmap(physRects[i].topLeft(), screenPixmaps[i]);
     }
     painter.end();
 

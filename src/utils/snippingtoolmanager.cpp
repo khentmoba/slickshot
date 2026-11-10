@@ -2,6 +2,30 @@
 #include "snippingtoolmanager.h"
 #include "confighandler.h"
 
+#include <QDir>
+
+bool SnippingToolManager::commandMatchesAppPath(const QString& command,
+                                                const QString& expectedAppPath)
+{
+    if (command.isEmpty() || expectedAppPath.isEmpty()) {
+        return false;
+    }
+    const auto toSlashes = [](QString path) {
+        return path.replace(QLatin1Char('\\'), QLatin1Char('/'));
+    };
+    const QString normExpected = QDir::cleanPath(toSlashes(expectedAppPath));
+    const QString normCmd = toSlashes(command.trimmed());
+    const QString quoted = QLatin1Char('"') + normExpected + QLatin1Char('"');
+    if (normCmd.startsWith(quoted, Qt::CaseInsensitive)) {
+        return true;
+    }
+    if (normCmd.compare(normExpected, Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+    return normCmd.startsWith(normExpected + QLatin1Char(' '),
+                              Qt::CaseInsensitive);
+}
+
 #if defined(Q_OS_WIN)
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -9,7 +33,6 @@
 #include <qt_windows.h>
 
 #include <QCoreApplication>
-#include <QDir>
 #include <QFileInfo>
 #include <string>
 
@@ -227,13 +250,8 @@ bool SnippingToolManager::isMsScreenclipRegistered()
         return false;
     }
 
-    std::wstring appPath = currentAppPath();
-    if (cmd.find(appPath) == std::wstring::npos &&
-        cmd.find(L"flameshot") == std::wstring::npos &&
-        cmd.find(L"slickshot") == std::wstring::npos) {
-        return false;
-    }
-    return true;
+    return commandMatchesAppPath(QString::fromStdWString(cmd),
+                                 QString::fromStdWString(currentAppPath()));
 }
 
 bool SnippingToolManager::registerMsScreenclip(bool reg)
@@ -305,21 +323,28 @@ bool SnippingToolManager::registerMsScreenclip(bool reg)
 
 bool SnippingToolManager::isAppPathsRegistered()
 {
-    std::wstring cmd;
+    const QString expected = QString::fromStdWString(currentAppPath());
+    std::wstring snippingCmd;
     if (!getRegString(HKEY_CURRENT_USER,
                       L"Software\\Microsoft\\Windows\\CurrentVersion\\App "
                       L"Paths\\SnippingTool.exe",
                       L"",
-                      cmd)) {
+                      snippingCmd) ||
+        !commandMatchesAppPath(QString::fromStdWString(snippingCmd),
+                               expected)) {
         return false;
     }
 
-    std::wstring appPath = currentAppPath();
-    if (cmd.find(appPath) == std::wstring::npos &&
-        cmd.find(L"flameshot") == std::wstring::npos &&
-        cmd.find(L"slickshot") == std::wstring::npos) {
+    std::wstring hostCmd;
+    if (!getRegString(HKEY_CURRENT_USER,
+                      L"Software\\Microsoft\\Windows\\CurrentVersion\\App "
+                      L"Paths\\ScreenClippingHost.exe",
+                      L"",
+                      hostCmd) ||
+        !commandMatchesAppPath(QString::fromStdWString(hostCmd), expected)) {
         return false;
     }
+
     return true;
 }
 
