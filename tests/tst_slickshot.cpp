@@ -59,14 +59,14 @@ void SlickShotTests::testAppUpdateReleaseInfo()
         "https://example.com/SlickShot-0.2.0-win64.zip" },
     });
     assets.append(QJsonObject{
-      { "name", "SlickShot-0.2.0-win64.msi" },
+      { "name", "SlickShot-0.2.0-win64-setup.exe" },
       { "browser_download_url",
-        "https://example.com/SlickShot-0.2.0-win64.msi" },
+        "https://example.com/SlickShot-0.2.0-win64-setup.exe" },
     });
     assets.append(QJsonObject{
-      { "name", "SlickShot-0.2.0-win64.msi.sha256sum" },
+      { "name", "SlickShot-0.2.0-win64-setup.exe.sha256sum" },
       { "browser_download_url",
-        "https://example.com/SlickShot-0.2.0-win64.msi.sha256sum" },
+        "https://example.com/SlickShot-0.2.0-win64-setup.exe.sha256sum" },
     });
 
     const QJsonObject release{
@@ -80,19 +80,19 @@ void SlickShotTests::testAppUpdateReleaseInfo()
     QCOMPARE(info.pageUrl,
              QStringLiteral("https://example.com/releases/v0.2.0"));
     QCOMPARE(info.installerUrl,
-             QStringLiteral("https://example.com/SlickShot-0.2.0-win64.msi"));
+             QStringLiteral("https://example.com/SlickShot-0.2.0-win64-setup.exe"));
     QCOMPARE(info.checksumUrl,
              QStringLiteral(
-               "https://example.com/SlickShot-0.2.0-win64.msi.sha256sum"));
+               "https://example.com/SlickShot-0.2.0-win64-setup.exe.sha256sum"));
 }
 
 void SlickShotTests::testAppUpdateSha256()
 {
     const QString valid = QString(64, QLatin1Char('A'));
-    QCOMPARE(AppUpdate::parseSha256(valid + "  SlickShot-0.2.0-win64.msi\n"),
+    QCOMPARE(AppUpdate::parseSha256(valid + "  SlickShot-0.2.0-win64-setup.exe\n"),
              valid.toLower());
     QCOMPARE(
-      AppUpdate::parseSha256("\\" + valid + " *dir\\SlickShot-0.2.0-win64.msi"),
+      AppUpdate::parseSha256("\\" + valid + " *dir\\SlickShot-0.2.0-win64-setup.exe"),
       valid.toLower());
     QCOMPARE(AppUpdate::parseSha256(QStringLiteral("not-a-sha256  file")),
              QString());
@@ -104,16 +104,19 @@ void SlickShotTests::testAppUpdateInstallScriptAndEncode()
 {
     const QString script = AppUpdate::installScript(
       1234,
-      QStringLiteral("C:\\Temp\\O'Connor\\SlickShot-update.msi"),
-      QStringLiteral("C:\\Program Files\\SlickShot\\flameshot.exe"),
-      QString(64, QLatin1Char('b')));
+      QStringLiteral("C:\\Temp\\O'Connor\\SlickShot-update-setup.exe"),
+      QString(64, QLatin1Char('b')),
+      QStringLiteral("C:\\Users\\O'Connor\\AppData\\Local\\Programs\\"
+                     "SlickShot\\bin\\flameshot.exe"));
 
     QVERIFY(script.contains(QStringLiteral("Wait-Process -Id 1234")));
     QVERIFY(script.contains(QStringLiteral("O''Connor")));
-    QVERIFY(script.contains(QStringLiteral("Get-FileHash")));
-    QVERIFY(script.contains(QStringLiteral("msiexec.exe")));
-    QVERIFY(script.contains(QStringLiteral("Remove-Item -LiteralPath")));
-    QVERIFY(script.contains(QStringLiteral("explorer.exe")));
+    QVERIFY(script.contains(QStringLiteral("[System.IO.FileShare]::Read")));
+    QVERIFY(script.contains(QStringLiteral("ComputeHash")));
+    QVERIFY(script.contains(QStringLiteral("'/S'")));
+    QVERIFY(script.contains(QStringLiteral("Start-Process -FilePath $app")));
+    QVERIFY(!script.contains(QStringLiteral("msiexec")));
+    QVERIFY(!script.contains(QStringLiteral("%")));
 
     const QString encoded = AppUpdate::encodeCommand(QStringLiteral("abc"));
     const QByteArray raw = QByteArray::fromBase64(encoded.toLatin1());
@@ -126,56 +129,42 @@ void SlickShotTests::testAppUpdateInstallScriptAndEncode()
 
 void SlickShotTests::testAppUpdateCanInstallInPlaceForPaths()
 {
-    AppUpdateInfo validInfo{
+    const AppUpdateInfo validInfo{
         QStringLiteral("0.2.0"),
         QStringLiteral("https://example.com/release"),
-        QStringLiteral("https://example.com/app.msi"),
-        QStringLiteral("https://example.com/app.msi.sha256sum"),
+        QStringLiteral("https://example.com/SlickShot-0.2.0-win64-setup.exe"),
+        QStringLiteral(
+          "https://example.com/SlickShot-0.2.0-win64-setup.exe.sha256sum"),
     };
 
-    const QString programFiles = QStringLiteral("C:\\Program Files");
-    const QString localPrograms =
-      QStringLiteral("C:\\Users\\alice\\AppData\\Local\\Programs");
+    const QString installRoot = QStringLiteral(
+      "C:\\Users\\alice\\AppData\\Local\\Programs\\SlickShot");
+    const QString installed = QStringLiteral(
+      "C:\\Users\\alice\\AppData\\Local\\Programs\\SlickShot\\bin\\"
+      "flameshot.exe");
 
+    QVERIFY(AppUpdate::canInstallInPlaceForPaths(validInfo, installed,
+                                                 installRoot));
     QVERIFY(AppUpdate::canInstallInPlaceForPaths(
       validInfo,
-      QStringLiteral("C:\\Program Files\\SlickShot"),
-      programFiles,
-      localPrograms,
-      false));
-    QVERIFY(AppUpdate::canInstallInPlaceForPaths(
-      validInfo,
-      QStringLiteral("C:/Users/alice/AppData/Local/Programs/SlickShot"),
-      programFiles,
-      localPrograms,
-      false));
+      QStringLiteral(
+        "C:/Users/alice/AppData/Local/Programs/slickshot/bin/flameshot.exe"),
+      installRoot));
     QVERIFY(!AppUpdate::canInstallInPlaceForPaths(
       validInfo,
-      QStringLiteral("C:\\Program Files (x86)\\SlickShot"),
-      programFiles,
-      localPrograms,
-      false));
+      QStringLiteral("C:\\Program Files\\SlickShot\\bin\\flameshot.exe"),
+      installRoot));
     QVERIFY(!AppUpdate::canInstallInPlaceForPaths(
       validInfo,
-      QStringLiteral("C:\\Users\\alice\\Desktop\\SlickShot"),
-      programFiles,
-      localPrograms,
-      false));
-    QVERIFY(!AppUpdate::canInstallInPlaceForPaths(
-      validInfo,
-      QStringLiteral("C:\\Program Files\\SlickShot"),
-      programFiles,
-      localPrograms,
-      true));
+      QStringLiteral(
+        "C:\\Users\\alice\\AppData\\Local\\Programs\\SlickShot2\\bin\\"
+        "flameshot.exe"),
+      installRoot));
 
-    AppUpdateInfo missingMsi = validInfo;
-    missingMsi.installerUrl.clear();
-    QVERIFY(!AppUpdate::canInstallInPlaceForPaths(
-      missingMsi,
-      QStringLiteral("C:\\Program Files\\SlickShot"),
-      programFiles,
-      localPrograms,
-      false));
+    AppUpdateInfo missingInstaller = validInfo;
+    missingInstaller.installerUrl.clear();
+    QVERIFY(!AppUpdate::canInstallInPlaceForPaths(missingInstaller, installed,
+                                                  installRoot));
 }
 
 void SlickShotTests::testSemanticVersionCompare()

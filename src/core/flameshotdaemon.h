@@ -18,6 +18,7 @@ class CaptureWidget;
 class QNetworkAccessManager;
 class QNetworkReply;
 class QVersionNumber;
+class QTimer;
 struct AppUpdateInfo;
 #endif
 
@@ -93,6 +94,7 @@ private:
     QString m_appLatestChecksumUrl;
     bool m_showManualCheckAppUpdateStatus;
     QNetworkAccessManager* m_networkCheckUpdates;
+    QTimer* m_updateCheckTimer;
 #endif
 
     static FlameshotDaemon* m_instance;

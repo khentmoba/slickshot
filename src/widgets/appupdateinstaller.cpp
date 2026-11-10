@@ -26,7 +26,7 @@ void AppUpdateInstaller::openUpdate(const AppUpdateInfo& info)
         return;
     }
     auto* installer = new AppUpdateInstaller(info);
-    installer->confirmAndDownload();
+    installer->start();
 }
 
 AppUpdateInstaller::AppUpdateInstaller(const AppUpdateInfo& info)
@@ -42,23 +42,12 @@ AppUpdateInstaller::AppUpdateInstaller(const AppUpdateInfo& info)
 
 AppUpdateInstaller::~AppUpdateInstaller()
 {
-    m_msiFile.reset();
+    m_installerFile.reset();
     delete m_progress;
 }
 
-void AppUpdateInstaller::confirmAndDownload()
+void AppUpdateInstaller::start()
 {
-    const auto answer = QMessageBox::question(
-      nullptr,
-      tr("Update SlickShot"),
-      tr("Install SlickShot %1 now?\n\nSlickShot will close, install the "
-         "update, and start again. Windows will ask for permission to install.")
-        .arg(m_info.version));
-    if (answer != QMessageBox::Yes) {
-        deleteLater();
-        return;
-    }
-
     m_progress =
       new QProgressDialog(tr("Preparing update..."), tr("Cancel"), 0, 0);
     m_progress->setWindowTitle(tr("Update SlickShot"));
@@ -107,14 +96,15 @@ void AppUpdateInstaller::downloadInstaller()
       QStandardPaths::writableLocation(QStandardPaths::TempLocation) +
       QStringLiteral("/SlickShot-update");
     QDir().mkpath(dirPath);
-    m_msiPath = QDir(dirPath).filePath(QStringLiteral("SlickShot-update.msi"));
+    m_installerPath =
+      QDir(dirPath).filePath(QStringLiteral("SlickShot-update-setup.exe"));
 
-    m_msiFile = std::make_unique<QFile>(m_msiPath);
-    if (!m_msiFile->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        const QString err = m_msiFile->errorString();
-        m_msiFile.reset();
+    m_installerFile = std::make_unique<QFile>(m_installerPath);
+    if (!m_installerFile->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        const QString err = m_installerFile->errorString();
+        m_installerFile.reset();
         fail(tr("Could not save the update to %1.\n\n%2")
-               .arg(QDir::toNativeSeparators(m_msiPath), err));
+               .arg(QDir::toNativeSeparators(m_installerPath), err));
         return;
     }
     m_hash.reset();
@@ -126,7 +116,7 @@ void AppUpdateInstaller::downloadInstaller()
 
     QNetworkReply* reply = get(QUrl(m_info.installerUrl));
     const auto drainChunk = [this, reply]() {
-        if (!m_msiFile || m_writeError) {
+        if (!m_installerFile || m_writeError) {
             return;
         }
         while (reply->bytesAvailable() > 0) {
@@ -135,7 +125,7 @@ void AppUpdateInstaller::downloadInstaller()
                 break;
             }
             m_hash.addData(chunk);
-            if (m_msiFile->write(chunk) != chunk.size()) {
+            if (m_installerFile->write(chunk) != chunk.size()) {
                 m_writeError = true;
                 reply->abort();
                 break;
@@ -162,19 +152,20 @@ void AppUpdateInstaller::downloadInstaller()
         reply->deleteLater();
 
         QString writeErrorString;
-        if (m_msiFile) {
-            if (m_writeError || !m_msiFile->flush()) {
+        if (m_installerFile) {
+            if (m_writeError || !m_installerFile->flush()) {
                 m_writeError = true;
-                writeErrorString = m_msiFile->errorString();
+                writeErrorString = m_installerFile->errorString();
             }
-            m_msiFile->close();
-            m_msiFile.reset();
+            m_installerFile->close();
+            m_installerFile.reset();
         }
 
         if (m_writeError) {
             cleanupInstallerFile();
             fail(tr("Could not save the update to %1.\n\n%2")
-                   .arg(QDir::toNativeSeparators(m_msiPath), writeErrorString));
+                   .arg(QDir::toNativeSeparators(m_installerPath),
+                        writeErrorString));
             return;
         }
         if (!ok) {
@@ -197,32 +188,31 @@ void AppUpdateInstaller::install()
 {
     const QString script = AppUpdate::installScript(
       QCoreApplication::applicationPid(),
-      QDir::toNativeSeparators(m_msiPath),
-      QDir::toNativeSeparators(QCoreApplication::applicationFilePath()),
-      m_expectedSha256);
+      QDir::toNativeSeparators(m_installerPath),
+      m_expectedSha256,
+      QDir::toNativeSeparators(QCoreApplication::applicationFilePath()));
     const QString arguments =
       QStringLiteral("-NoProfile -NonInteractive -WindowStyle Hidden "
                      "-ExecutionPolicy Bypass -EncodedCommand ") +
       AppUpdate::encodeCommand(script);
-    if (!AppUpdate::runElevated(QStringLiteral("powershell.exe"), arguments)) {
+    if (!AppUpdate::startHidden(QStringLiteral("powershell.exe"), arguments)) {
         cleanupInstallerFile();
-        fail(
-          tr("SlickShot was not updated because the Windows permission prompt "
-             "was declined or could not start."));
+        fail(tr("SlickShot was not updated because the update script could "
+                "not start."));
         return;
     }
 
-    // The elevated script waits for this process to exit, runs msiexec, then
-    // restarts SlickShot.
+    // The script waits for this process to exit, runs the installer silently,
+    // and starts SlickShot again.
     m_progress->hide();
     QCoreApplication::quit();
 }
 
 void AppUpdateInstaller::cleanupInstallerFile()
 {
-    m_msiFile.reset();
-    if (!m_msiPath.isEmpty()) {
-        QFile::remove(m_msiPath);
+    m_installerFile.reset();
+    if (!m_installerPath.isEmpty()) {
+        QFile::remove(m_installerPath);
     }
 }
 

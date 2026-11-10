@@ -30,6 +30,12 @@ QString assetUrl(const QJsonArray& assets, const QString& pattern)
     return {};
 }
 
+QString toSlashes(QString path)
+{
+    path.replace(QLatin1Char('\\'), QLatin1Char('/'));
+    return QDir::cleanPath(path);
+}
+
 } // namespace
 
 AppUpdateInfo AppUpdate::releaseInfo(const QJsonObject& release)
@@ -43,47 +49,24 @@ AppUpdateInfo AppUpdate::releaseInfo(const QJsonObject& release)
 
     const QJsonArray assets = release["assets"].toArray();
     info.installerUrl = assetUrl(
-      assets, QStringLiteral("^SlickShot-[0-9A-Za-z._+-]+-win64\\.msi$"));
-    info.checksumUrl = assetUrl(
-      assets,
-      QStringLiteral("^SlickShot-[0-9A-Za-z._+-]+-win64\\.msi\\.sha256sum$"));
+      assets, QStringLiteral("^SlickShot-[0-9A-Za-z._+-]+-win64-setup\\.exe$"));
+    info.checksumUrl =
+      assetUrl(assets,
+               QStringLiteral(
+                 "^SlickShot-[0-9A-Za-z._+-]+-win64-setup\\.exe\\.sha256sum$"));
     return info;
 }
 
 bool AppUpdate::canInstallInPlaceForPaths(const AppUpdateInfo& info,
-                                          const QString& appDir,
-                                          const QString& programFiles,
-                                          const QString& localPrograms,
-                                          bool isPortable)
+                                          const QString& appPath,
+                                          const QString& installRoot)
 {
-    if (isPortable || info.installerUrl.isEmpty() ||
-        info.checksumUrl.isEmpty()) {
+    if (info.installerUrl.isEmpty() || info.checksumUrl.isEmpty() ||
+        appPath.isEmpty() || installRoot.isEmpty()) {
         return false;
     }
-    const auto normalizeDir = [](const QString& dir) {
-        QString slashed = dir;
-        slashed.replace(QLatin1Char('\\'), QLatin1Char('/'));
-        QString clean = QDir::cleanPath(slashed);
-        if (!clean.isEmpty() && !clean.endsWith(QLatin1Char('/'))) {
-            clean += QLatin1Char('/');
-        }
-        return clean;
-    };
-
-    const QString normAppDir = normalizeDir(appDir);
-    if (normAppDir.length() <= 1) {
-        return false;
-    }
-
-    const QString normProgramFiles = normalizeDir(programFiles);
-    if (normProgramFiles.length() > 1 &&
-        normAppDir.startsWith(normProgramFiles, Qt::CaseInsensitive)) {
-        return true;
-    }
-
-    const QString normLocalPrograms = normalizeDir(localPrograms);
-    return normLocalPrograms.length() > 1 &&
-           normAppDir.startsWith(normLocalPrograms, Qt::CaseInsensitive);
+    const QString root = toSlashes(installRoot) + QLatin1Char('/');
+    return toSlashes(appPath).startsWith(root, Qt::CaseInsensitive);
 }
 
 bool AppUpdate::canInstallInPlace(const AppUpdateInfo& info)
@@ -92,15 +75,18 @@ bool AppUpdate::canInstallInPlace(const AppUpdateInfo& info)
     const QString appDir = QCoreApplication::applicationDirPath();
     if (QFileInfo::exists(
           QDir(appDir).filePath(QStringLiteral("flameshot.ini")))) {
+        // A portable copy keeps its config next to the exe. The installer
+        // removes the install folder, so never replace a portable copy.
         return false;
     }
-    const QString localAppData = qEnvironmentVariable("LocalAppData");
-    const QString localPrograms =
-      localAppData.isEmpty()
-        ? QString()
-        : QDir(localAppData).filePath(QStringLiteral("Programs"));
+    const QString localAppData = qEnvironmentVariable("LOCALAPPDATA");
+    if (localAppData.isEmpty()) {
+        return false;
+    }
+    const QString installRoot =
+      QDir(localAppData).filePath(QStringLiteral("Programs/SlickShot"));
     return canInstallInPlaceForPaths(
-      info, appDir, qEnvironmentVariable("ProgramFiles"), localPrograms, false);
+      info, QCoreApplication::applicationFilePath(), installRoot);
 #else
     Q_UNUSED(info);
     return false;
@@ -118,38 +104,55 @@ QString AppUpdate::parseSha256(const QString& checksumFile)
 }
 
 QString AppUpdate::installScript(qint64 pid,
-                                 const QString& msiPath,
-                                 const QString& appPath,
-                                 const QString& expectedSha256)
+                                 const QString& installerPath,
+                                 const QString& expectedSha256,
+                                 const QString& appPath)
 {
     // Single-quoted PowerShell literals only need ' doubled.
     const auto literal = [](const QString& value) {
         QString escaped = value;
         escaped.replace(QLatin1Char('\''), QStringLiteral("''"));
-        return QStringLiteral("'%1'").arg(escaped);
+        return QStringLiteral("'") + escaped + QStringLiteral("'");
     };
     return QStringLiteral(
+             "$ErrorActionPreference = 'Stop'\n"
+             "$log = Join-Path $env:TEMP 'SlickShot-update.log'\n"
+             "$installer = %2\n"
+             "$app = %4\n"
              "Wait-Process -Id %1 -ErrorAction SilentlyContinue\n"
-             "$hash = Get-FileHash -LiteralPath %2 -Algorithm SHA256 "
-             "-ErrorAction SilentlyContinue\n"
-             "if (-not $hash -or $hash.Hash -ine %3) {\n"
-             "  Remove-Item -LiteralPath %2 -Force -ErrorAction "
-             "SilentlyContinue\n"
-             "  Start-Process -FilePath explorer.exe -ArgumentList %5\n"
-             "  exit 1\n"
+             "try {\n"
+             "  # Hold the installer open until it exits. Other processes "
+             "cannot\n"
+             "  # write or delete it meanwhile, so the bytes hashed here are "
+             "the\n"
+             "  # bytes that run.\n"
+             "  $stream = [System.IO.File]::Open($installer, "
+             "[System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, "
+             "[System.IO.FileShare]::Read)\n"
+             "  try {\n"
+             "    $digest = [BitConverter]::ToString("
+             "[System.Security.Cryptography.SHA256]::Create()"
+             ".ComputeHash($stream)).Replace('-', '')\n"
+             "    if ($digest -ine %3) { throw 'checksum mismatch' }\n"
+             "    $setup = Start-Process -FilePath $installer "
+             "-ArgumentList '/S' -Wait -PassThru\n"
+             "    if ($setup.ExitCode -ne 0) { "
+             "throw ('installer exited with ' + $setup.ExitCode) }\n"
+             "  } finally {\n"
+             "    $stream.Dispose()\n"
+             "  }\n"
+             "} catch {\n"
+             "  ($_ | Out-String) | Add-Content -LiteralPath $log\n"
              "}\n"
-             "Start-Process -FilePath msiexec.exe -ArgumentList @('/i', %4, "
-             "'/passive', '/norestart') -Wait\n"
-             "Remove-Item -LiteralPath %2 -Force -ErrorAction "
-             "SilentlyContinue\n"
-             "Remove-Item -LiteralPath (Split-Path -Parent %2) -Force "
+             "Remove-Item -LiteralPath $installer -Force "
              "-ErrorAction SilentlyContinue\n"
-             "Start-Process -FilePath explorer.exe -ArgumentList %5\n")
+             "Remove-Item -LiteralPath (Split-Path -Parent $installer) "
+             "-Force -ErrorAction SilentlyContinue\n"
+             "Start-Process -FilePath $app\n")
       .arg(QString::number(pid),
-           literal(msiPath),
+           literal(installerPath),
            literal(expectedSha256),
-           literal(QStringLiteral("\"%1\"").arg(msiPath)),
-           literal(QStringLiteral("\"%1\"").arg(appPath)));
+           literal(appPath));
 }
 
 QString AppUpdate::encodeCommand(const QString& script)
@@ -159,7 +162,7 @@ QString AppUpdate::encodeCommand(const QString& script)
     return QString::fromLatin1(utf16.toBase64());
 }
 
-bool AppUpdate::runElevated(const QString& program, const QString& arguments)
+bool AppUpdate::startHidden(const QString& program, const QString& arguments)
 {
 #if defined(Q_OS_WIN)
     const std::wstring file = program.toStdWString();
@@ -167,7 +170,6 @@ bool AppUpdate::runElevated(const QString& program, const QString& arguments)
 
     SHELLEXECUTEINFOW info{};
     info.cbSize = static_cast<DWORD>(sizeof(info));
-    info.lpVerb = L"runas";
     info.lpFile = file.c_str();
     info.lpParameters = params.c_str();
     info.nShow = SW_HIDE;

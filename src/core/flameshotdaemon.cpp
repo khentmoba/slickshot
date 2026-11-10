@@ -95,6 +95,7 @@ FlameshotDaemon::FlameshotDaemon()
   , m_appLatestVersion(QStringLiteral(APP_VERSION).replace("v", ""))
   , m_showManualCheckAppUpdateStatus(false)
   , m_networkCheckUpdates(nullptr)
+  , m_updateCheckTimer(nullptr)
 #endif
 {
     connect(
@@ -254,12 +255,19 @@ void FlameshotDaemon::getLatestAvailableVersion()
     }
     m_networkCheckUpdates->get(requestCheckUpdates);
 
-    // check for updates each 24 hours
-    QTimer::singleShot(1000 * 60 * 60 * 24, this, [this]() {
-        if (ConfigHandler().checkForUpdates()) {
-            this->getLatestAvailableVersion();
-        }
-    });
+    // Re-check every 24 hours. Reuses one timer across manual checks.
+    if (!m_updateCheckTimer) {
+        m_updateCheckTimer = new QTimer(this);
+        m_updateCheckTimer->setInterval(1000 * 60 * 60 * 24);
+        connect(m_updateCheckTimer, &QTimer::timeout, this, [this]() {
+            if (ConfigHandler().checkForUpdates()) {
+                getLatestAvailableVersion();
+            }
+        });
+    }
+    if (!m_updateCheckTimer->isActive()) {
+        m_updateCheckTimer->start();
+    }
 }
 
 AppUpdateInfo FlameshotDaemon::latestUpdateInfo() const
