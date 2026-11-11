@@ -38,6 +38,7 @@ Unlike cloud-heavy tools (Loom, Snagit) or clunky legacy tools (Snipping Tool, G
 - In-place markup: arrows, rectangles, circles, counters, highlighter, freehand pencil, text, pixelate/blur, inverted fills.
 - High-DPI awareness on Windows 10/11 and multi-monitor layouts.
 - Must remain lightweight, sub-second activation, zero UI lag.
+- In-app updates: the app downloads the release installer, checks its SHA-256, runs it silently, and relaunches. No MSI, no portable-zip hand-off, and no code-signing requirement.
 
 ## Brand Commitments
 
