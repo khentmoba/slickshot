@@ -177,8 +177,32 @@ jobs:
           sha256sum "$f" > "$f.sha256sum"
           cat "$f.sha256sum"
 
+      - name: Smoke test Windows installer
+        if: matrix.type == 'installer'
+        shell: pwsh
+        env:
+          PAK_ARCH: ${{ matrix.config.pak_arch }}
+        run: |
+          $ver = $env:VERSION
+          $dir = Join-Path $env:GITHUB_WORKSPACE "build\Package\installer"
+          $setup = Join-Path $dir "SlickShot-$ver-$env:PAK_ARCH-setup.exe"
+          & "$env:GITHUB_WORKSPACE\packaging\win-installer\smoke-test.ps1" `
+            -Installer $setup -Version $ver
+
+      - name: Smoke test Windows portable
+        if: matrix.type == 'portable'
+        shell: pwsh
+        env:
+          PAK_ARCH: ${{ matrix.config.pak_arch }}
+        run: |
+          $ver = $env:VERSION
+          $dir = Join-Path $env:GITHUB_WORKSPACE "build\Package\portable"
+          $zip = Join-Path $dir "SlickShot-$ver-$env:PAK_ARCH.zip"
+          & "$env:GITHUB_WORKSPACE\packaging\win-installer\smoke-test.ps1" `
+            -PortableZip $zip
+
       - name: Artifact Upload
-        if:  matrix.type == 'installer'
+        if: matrix.type == 'installer'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PRODUCT }}-${{ env.VER_INFO }}-artifact-win-${{ matrix.config.arch }}-${{ matrix.type }}
@@ -188,7 +212,7 @@ jobs:
           overwrite: true
 
       - name: Artifact Upload
-        if:  matrix.type == 'portable'
+        if: matrix.type == 'portable'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PRODUCT }}-${{ env.VER_INFO }}-artifact-win-${{ matrix.config.arch }}-${{ matrix.type }}

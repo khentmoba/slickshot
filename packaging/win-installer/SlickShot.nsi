@@ -80,6 +80,16 @@ Section "Install"
 SectionEnd
 
 Section "un.Uninstall"
+  ; A running SlickShot keeps bin\flameshot.exe locked. Refuse before anything is
+  ; removed, so a refused uninstall leaves the app whole.
+  IfFileExists "$INSTDIR\${APP_EXE}" +1 +7
+    ClearErrors
+    FileOpen $0 "$INSTDIR\${APP_EXE}" a
+    IfErrors 0 +3
+    MessageBox MB_OK|MB_ICONSTOP "SlickShot is running. Close it, then uninstall again." /SD IDOK
+    Abort
+    FileClose $0
+
   Delete "$SMPROGRAMS\${APP_NAME}.lnk"
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
   RMDir /r "$INSTDIR"
