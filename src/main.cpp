@@ -321,42 +321,39 @@ int main(int argc, char* argv[])
     if (isScreenclipUri) {
         new QApplication(argc, argv);
 #ifdef USE_KDSINGLEAPPLICATION
-        {
-            auto kdsa =
-              KDSingleApplication(QStringLiteral("org.flameshot.Flameshot"));
-            if (!kdsa.isPrimaryInstance()) {
-                QByteArray data;
-                QDataStream stream(&data, QIODevice::WriteOnly);
-                stream << QStringLiteral("requestCapture");
-                kdsa.sendMessage(data);
-                delete qApp;
-                return 0;
-            }
+        auto kdsa =
+          KDSingleApplication(QStringLiteral("org.flameshot.Flameshot"));
+        if (!kdsa.isPrimaryInstance()) {
+            QByteArray data;
+            QDataStream stream(&data, QIODevice::WriteOnly);
+            stream << QStringLiteral("requestCapture");
+            kdsa.sendMessage(data);
+            delete qApp;
+            return 0;
         }
 #endif
+        // Become the resident instance rather than exiting after one capture.
+        // Without a daemon, clipboard copies are dropped and the hotkey hook
+        // and tray icon never start.
         configureApp(true, translator, qtTranslator);
         SnippingToolManager::autoConfigureOnStartup();
-        Flameshot::setOrigin(Flameshot::CLI);
-
-        if (!ConfigHandler().allowMultipleGuiInstances()) {
-            auto* mutex = guiMutexLock();
-            if (!mutex) {
-                return 1;
-            }
-            QObject::connect(
-              qApp, &QCoreApplication::aboutToQuit, qApp, [mutex]() {
-                  mutex->detach();
-                  delete mutex;
-              });
-        }
+        Flameshot* flameshot = Flameshot::instance();
+        FlameshotDaemon::start();
+#if defined(USE_KDSINGLEAPPLICATION) &&                                        \
+  (defined(Q_OS_MACOS) || defined(Q_OS_WIN))
+        QObject::connect(
+          &kdsa,
+          &KDSingleApplication::messageReceived,
+          FlameshotDaemon::instance(),
+          &FlameshotDaemon::messageReceivedFromSecondaryInstance);
+#endif
 
         CaptureRequest req(CaptureRequest::GRAPHICAL_MODE);
         if (ConfigHandler().saveLastRegion()) {
             req.setInitialSelection(getLastRegion());
         }
-        int guiExitCode = requestCaptureAndWait(req);
-        delete qApp;
-        return guiExitCode;
+        flameshot->requestCapture(req);
+        return qApp->exec();
     }
 #endif
 
