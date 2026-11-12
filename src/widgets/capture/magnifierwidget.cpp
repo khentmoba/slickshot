@@ -41,36 +41,28 @@ QPoint MagnifierWidget::physicalPixelAt(const QPoint& logicalPos,
     return { px, py };
 }
 
-void MagnifierWidget::ensureScreenshotImage()
-{
-    if (m_screenshotImage.isNull() && !m_screenshot.isNull()) {
-        m_screenshotImage = m_screenshot.toImage();
-        m_screenshotImage.setDevicePixelRatio(1.0);
-    }
-}
-
-QImage MagnifierWidget::samplePatch(const QPoint& centerPx) const
+QImage MagnifierWidget::samplePatch(const QPoint& centerPx,
+                                    QColor& centerColor) const
 {
     QImage patch(m_pixels, m_pixels, QImage::Format_ARGB32);
     patch.fill(Qt::black);
-    if (m_screenshotImage.isNull()) {
+    centerColor = Qt::black;
+    if (m_screenshot.isNull()) {
         return patch;
     }
 
     const int topLeftX = centerPx.x() - m_magPixels;
     const int topLeftY = centerPx.y() - m_magPixels;
     const QRect srcRect = QRect(topLeftX, topLeftY, m_pixels, m_pixels)
-                            .intersected(m_screenshotImage.rect());
+                            .intersected(m_screenshot.rect());
     if (!srcRect.isEmpty()) {
+        QImage subImg = m_screenshot.copy(srcRect).toImage();
+        subImg.setDevicePixelRatio(1.0);
         QPainter patchPainter(&patch);
-        patchPainter.drawImage(srcRect.x() - topLeftX,
-                               srcRect.y() - topLeftY,
-                               m_screenshotImage,
-                               srcRect.x(),
-                               srcRect.y(),
-                               srcRect.width(),
-                               srcRect.height());
+        patchPainter.drawImage(
+          srcRect.x() - topLeftX, srcRect.y() - topLeftY, subImg);
     }
+    centerColor = patch.pixelColor(m_magPixels, m_magPixels);
     return patch;
 }
 
@@ -130,8 +122,7 @@ void MagnifierWidget::drawColorReadout(QPainter& painter,
 
 void MagnifierWidget::paintEvent(QPaintEvent*)
 {
-    ensureScreenshotImage();
-    if (m_screenshotImage.isNull()) {
+    if (m_screenshot.isNull()) {
         return;
     }
     QPainter p(this);
@@ -160,9 +151,9 @@ void MagnifierWidget::drawLoupe(QPainter& painter, bool circle)
     const QPoint translated = mapFromGlobal(QCursor::pos());
     const qreal dpr = m_screenshot.devicePixelRatio();
     const QPoint centerPx =
-      physicalPixelAt(translated, dpr, m_screenshotImage.size());
-    const QImage patch = samplePatch(centerPx);
-    const QColor centerColor = m_screenshotImage.pixelColor(centerPx);
+      physicalPixelAt(translated, dpr, m_screenshot.size());
+    QColor centerColor;
+    const QImage patch = samplePatch(centerPx, centerColor);
 
     const qreal loupeSize = m_pixels * magZoom;
     const qreal loupeHalf = loupeSize / 2.0;

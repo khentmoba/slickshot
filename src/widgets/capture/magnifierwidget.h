@@ -33,10 +33,8 @@ private:
     QColor m_color;
     QColor m_borderColor;
     QPixmap m_screenshot;
-    QImage m_screenshotImage;
 
-    void ensureScreenshotImage();
-    QImage samplePatch(const QPoint& centerPx) const;
+    QImage samplePatch(const QPoint& centerPx, QColor& centerColor) const;
     void drawColorReadout(QPainter& painter,
                           const QPointF& drawPos,
                           const QColor& pixelColor);

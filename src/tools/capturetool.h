@@ -151,6 +151,7 @@ public:
 
     // Called every time the tool has to draw
     virtual void process(QPainter& painter, const QPixmap& pixmap) = 0;
+    // Hit-testing passes the search square as pixmap, not the whole canvas.
     virtual void drawSearchArea(QPainter& painter, const QPixmap& pixmap)
     {
         process(painter, pixmap);

@@ -606,15 +606,19 @@ void ConfigHandler::resetValue(const QString& key)
 
 QSet<QString>& ConfigHandler::recognizedGeneralOptions()
 {
-    auto keys = ::recognizedGeneralOptions.keys();
-    static QSet<QString> options = QSet<QString>(keys.begin(), keys.end());
+    static QSet<QString> options = []() {
+        auto keys = ::recognizedGeneralOptions.keys();
+        return QSet<QString>(keys.begin(), keys.end());
+    }();
     return options;
 }
 
 QSet<QString>& ConfigHandler::recognizedShortcutNames()
 {
-    auto keys = recognizedShortcuts.keys();
-    static QSet<QString> names = QSet<QString>(keys.begin(), keys.end());
+    static QSet<QString> names = []() {
+        auto keys = recognizedShortcuts.keys();
+        return QSet<QString>(keys.begin(), keys.end());
+    }();
     return names;
 }
 
