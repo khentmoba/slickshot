@@ -31,6 +31,7 @@
 #include "request.h"
 #include <QDBusInterface>
 #include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
 #include <QDBusReply>
 #include <QDir>
 #include <QUrl>
@@ -135,28 +136,46 @@ ScreenGrabber::PortalStatus ScreenGrabber::freeDesktopPortal(
           QStringLiteral("x11:0x%1").arg(parentDummy.winId(), 0, 16);
     }
 
-    QDBusMessage reply = screenshotInterface.call(
-      QStringLiteral("Screenshot"),
-      parentWindow,
-      QMap<QString, QVariant>({ { "handle_token", QVariant(token) },
-                                { "interactive", QVariant(false) } }));
-
-    if (reply.type() == QDBusMessage::ErrorMessage) {
-        // No backend provides org.freedesktop.portal.Screenshot (or the
-        // portal rejected the request outright); the Response signal will
-        // never arrive, so fail now instead of waiting for the timeout.
-        QObject::disconnect(conn);
-        request->deleteLater();
-        errorDetail =
-          tr("The `org.freedesktop.portal.Screenshot` request failed: %1")
-            .arg(reply.errorMessage());
-        return PortalStatus::Unavailable;
-    }
+    // Async so the UI stays responsive. The timeout below only runs inside
+    // loop.exec(), so a blocking call would wait on the portal without it.
+    bool rejected = false;
+    QString rejectionMessage;
+    auto* watcher = new QDBusPendingCallWatcher(
+      screenshotInterface.asyncCall(
+        QStringLiteral("Screenshot"),
+        parentWindow,
+        QMap<QString, QVariant>({ { "handle_token", QVariant(token) },
+                                  { "interactive", QVariant(false) } })),
+      &loop);
+    QObject::connect(watcher,
+                     &QDBusPendingCallWatcher::finished,
+                     &loop,
+                     [&](QDBusPendingCallWatcher* call) {
+                         if (call->isError()) {
+                             // No backend provides
+                             // org.freedesktop.portal.Screenshot (or the portal
+                             // rejected the request outright); the Response
+                             // signal will never arrive, so stop waiting
+                             // instead of timing out.
+                             rejected = true;
+                             rejectionMessage = call->error().message();
+                             loop.quit();
+                         }
+                         call->deleteLater();
+                     });
 
     loop.exec();
     timeout.stop();
     QObject::disconnect(conn);
-    request->Close().waitForFinished();
+    if (rejected) {
+        request->deleteLater();
+        errorDetail =
+          tr("The `org.freedesktop.portal.Screenshot` request failed: %1")
+            .arg(rejectionMessage);
+        return PortalStatus::Unavailable;
+    }
+    // Don't wait for the close reply; it would block the UI thread.
+    request->Close();
     request->deleteLater();
 
     if (timedOut) {
