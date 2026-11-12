@@ -42,6 +42,7 @@
 #include <QShowEvent>
 #include <QTextEdit>
 #include <QWindow>
+#include <cmath>
 
 #if defined(Q_OS_WIN)
 #ifndef NOMINMAX
@@ -463,13 +464,16 @@ void CaptureWidget::xywhTick()
 void CaptureWidget::onDisplayGridChanged(bool display)
 {
     m_displayGrid = display;
-    repaint();
+    if (!display) {
+        m_gridTileCache.clear();
+    }
+    update();
 }
 
 void CaptureWidget::onGridSizeChanged(int size)
 {
     m_gridSize = size;
-    repaint();
+    update();
 }
 
 void CaptureWidget::startColorGrab()
@@ -764,7 +768,7 @@ void CaptureWidget::paintEvent(QPaintEvent* paintEvent)
                   selection.top() + (selection.height() - xybox.height()) / 2;
         }
 
-        QColor uicolor = ConfigHandler().uiColor();
+        QColor uicolor = m_uiColor;
         uicolor.setAlpha(200);
         painter.fillRect(
           x0, y0, xybox.width(), xybox.height(), QBrush(uicolor));
@@ -779,27 +783,7 @@ void CaptureWidget::paintEvent(QPaintEvent* paintEvent)
     }
 
     if (m_displayGrid) {
-        QColor uicolor = ConfigHandler().uiColor();
-        uicolor.setAlpha(100);
-        painter.setPen(uicolor);
-        painter.setBrush(QBrush(uicolor));
-
-        const auto scale{ m_context.screenshot.devicePixelRatio() };
-        auto topLeft = mapToGlobal(m_context.selection.topLeft() / scale);
-        topLeft.rx() -= topLeft.x() % m_gridSize;
-        topLeft.ry() -= topLeft.y() % m_gridSize;
-        topLeft = mapFromGlobal(topLeft);
-
-        const auto step{ m_gridSize / scale };
-        const auto radius{ 1 * scale };
-
-        for (int y = topLeft.y(); y < m_context.selection.bottom() / scale;
-             y += step) {
-            for (int x = topLeft.x(); x < m_context.selection.right() / scale;
-                 x += step) {
-                painter.drawEllipse(x, y, radius, radius);
-            }
-        }
+        drawGrid(painter);
     }
 
     if (m_activeTool && m_mouseIsClicked) {
@@ -916,6 +900,7 @@ void CaptureWidget::mousePressEvent(QMouseEvent* e)
     m_startMove = false;
     m_startMovePos = QPoint();
     m_mousePressedPos = e->pos();
+    invalidateDragBase();
     m_activeToolOffsetToMouseOnStart = QPoint();
     if (m_colorPicker->isVisible()) {
         updateCursor();
@@ -993,7 +978,7 @@ void CaptureWidget::mouseMoveEvent(QMouseEvent* e)
     if (m_magnifier) {
         if (!m_activeButton) {
             m_magnifier->show();
-            m_magnifier->update();
+            updateMagnifierArea();
         } else {
             m_magnifier->hide();
         }
@@ -1036,7 +1021,7 @@ void CaptureWidget::mouseMoveEvent(QMouseEvent* e)
             // ensure selection outline is updated too
             update(paddedUpdateRect(activeTool->boundingRect()));
             activeTool->move(e->pos() - m_activeToolOffsetToMouseOnStart);
-            drawToolsData();
+            redrawFromLayer(m_panel->activeLayerIndex());
         }
     } else if (m_activeTool) {
         // drawing with a tool
@@ -1065,6 +1050,7 @@ void CaptureWidget::mouseMoveEvent(QMouseEvent* e)
 
 void CaptureWidget::mouseReleaseEvent(QMouseEvent* e)
 {
+    invalidateDragBase();
     if (e->button() == Qt::LeftButton && m_colorPicker->isVisible()) {
         // Color picker
         if (m_colorPicker->isVisible() && m_panel->activeLayerIndex() >= 0 &&
@@ -1180,7 +1166,7 @@ void CaptureWidget::wheelEvent(QWheelEvent* e)
         if (activeButtonTool() &&
             activeButtonTool()->handleMouseWheelEvent(
               delta, m_adjustmentButtonPressed, m_context)) {
-            this->repaint();
+            update();
             return;
         }
         toolSizeOffset = delta;
@@ -1646,6 +1632,7 @@ void CaptureWidget::updateActiveLayer(int layer)
 
 void CaptureWidget::onMoveCaptureToolUp(int captureToolIndex)
 {
+    invalidateDragBase();
     m_captureToolObjectsBackup = m_captureToolObjects;
     pushObjectsStateToUndoStack();
     auto tool = m_captureToolObjects.at(captureToolIndex);
@@ -1656,6 +1643,7 @@ void CaptureWidget::onMoveCaptureToolUp(int captureToolIndex)
 
 void CaptureWidget::onMoveCaptureToolDown(int captureToolIndex)
 {
+    invalidateDragBase();
     m_captureToolObjectsBackup = m_captureToolObjects;
     pushObjectsStateToUndoStack();
     auto tool = m_captureToolObjects.at(captureToolIndex);
@@ -1958,8 +1946,154 @@ void CaptureWidget::pushToolToStack()
     }
 }
 
+void CaptureWidget::invalidateDragBase()
+{
+    m_dragBase = QPixmap();
+    m_dragBaseLayer = -1;
+}
+
+void CaptureWidget::redrawFromLayer(int layer)
+{
+    const int count = m_captureToolObjects.size();
+    if (m_dragBase.isNull() || m_dragBaseLayer != layer) {
+        // Objects below the dragged layer stay put while it moves, so compose
+        // them once and reuse that result for the following moves
+        m_dragBase = m_context.origScreenshot;
+        m_captureToolObjects.composeRange(m_dragBase, 0, layer);
+        m_dragBaseLayer = layer;
+    }
+    m_context.screenshot = m_dragBase;
+    m_captureToolObjects.composeRange(m_context.screenshot, layer, count);
+    // The moved object and the ones drawn over it can change, so refresh them
+    for (int index = layer; index < count; ++index) {
+        update(
+          paddedUpdateRect(m_captureToolObjects.at(index)->boundingRect()));
+    }
+    drawObjectSelection();
+}
+
+int CaptureWidget::gridTileMargin(qreal scale)
+{
+    // A dot's outline reaches half a logical pixel past its top-left corner,
+    // so the margin must cover at least that on every side
+    return static_cast<int>(std::ceil(scale));
+}
+
+QImage CaptureWidget::renderGridTile(const QPointF& limit,
+                                     qreal dpr,
+                                     qreal scale,
+                                     int gridSize,
+                                     const QColor& color)
+{
+    if (limit.x() <= 0 || limit.y() <= 0) {
+        return QImage();
+    }
+    // Dots sit on a lattice that starts at the grid origin. Pixel (0, 0) of the
+    // tile is at (-margin, -margin) from that origin, and the tile extends past
+    // the limit by the same margin, so no dot is clipped.
+    const int margin = gridTileMargin(scale);
+    const QSize tileSize(static_cast<int>(std::ceil(limit.x())) + 2 * margin,
+                         static_cast<int>(std::ceil(limit.y())) + 2 * margin);
+
+    QImage tile((QSizeF(tileSize) * dpr).toSize(),
+                QImage::Format_ARGB32_Premultiplied);
+    tile.setDevicePixelRatio(dpr);
+    tile.fill(Qt::transparent);
+
+    QPainter painter(&tile);
+    painter.translate(margin, margin);
+    drawGridDots(painter, limit, scale, gridSize, color);
+    return tile;
+}
+
+void CaptureWidget::drawGridDots(QPainter& painter,
+                                 const QPointF& limit,
+                                 qreal scale,
+                                 int gridSize,
+                                 const QColor& color)
+{
+    painter.setPen(color);
+    painter.setBrush(QBrush(color));
+    const auto step{ gridSize / scale };
+    const auto radius{ 1 * scale };
+    for (int y = 0; y < limit.y(); y += step) {
+        for (int x = 0; x < limit.x(); x += step) {
+            painter.drawEllipse(x, y, radius, radius);
+        }
+    }
+}
+
+void CaptureWidget::drawGrid(QPainter& painter)
+{
+    const auto scale{ m_context.screenshot.devicePixelRatio() };
+    auto topLeft = mapToGlobal(m_context.selection.topLeft() / scale);
+    topLeft.rx() -= topLeft.x() % m_gridSize;
+    topLeft.ry() -= topLeft.y() % m_gridSize;
+    topLeft = mapFromGlobal(topLeft);
+
+    // Dots run from the grid origin up to the selection's far edge. The tile
+    // depends only on this extent, so it is reused while the extent is the
+    // same.
+    const QPointF limit(m_context.selection.right() / scale - topLeft.x(),
+                        m_context.selection.bottom() / scale - topLeft.y());
+    QColor uicolor = m_uiColor;
+    uicolor.setAlpha(100);
+
+    const CaptureGridTileCache::Key key{
+        limit, devicePixelRatioF(), scale, m_gridSize, uicolor.rgba()
+    };
+    const auto drawDirect = [&] {
+        painter.save();
+        painter.translate(topLeft);
+        drawGridDots(painter, limit, scale, m_gridSize, uicolor);
+        painter.restore();
+    };
+
+    if (!CaptureGridTileCache::supportsDevicePixelRatio(key.dpr, key.scale)) {
+        m_gridTileCache.clear();
+        drawDirect();
+        return;
+    }
+
+    switch (m_gridTileCache.request(key)) {
+        case CaptureGridTileCache::Request::UseCachedTile: {
+            const int margin = gridTileMargin(scale);
+            painter.drawImage(topLeft - QPoint(margin, margin),
+                              m_gridTileCache.tile());
+            return;
+        }
+        case CaptureGridTileCache::Request::BuildTile:
+            m_gridTileCache.setTile(
+              renderGridTile(limit, key.dpr, scale, m_gridSize, uicolor));
+            if (!m_gridTileCache.tile().isNull()) {
+                const int margin = gridTileMargin(scale);
+                painter.drawImage(topLeft - QPoint(margin, margin),
+                                  m_gridTileCache.tile());
+                return;
+            }
+            break;
+        case CaptureGridTileCache::Request::DrawDirect:
+            break;
+    }
+    drawDirect();
+}
+
+void CaptureWidget::updateMagnifierArea()
+{
+    // The loupe and its color readout stay inside this box around the cursor
+    // (see MagnifierWidget::reach), so only this box and the previous one need
+    // repainting
+    const int reach = MagnifierWidget::reach;
+    const QPoint cursor = mapFromGlobal(QCursor::pos());
+    const QRect area(cursor - QPoint(reach, reach),
+                     QSize(2 * reach, 2 * reach));
+    m_magnifier->update(area.united(m_magnifierArea));
+    m_magnifierArea = area;
+}
+
 void CaptureWidget::drawToolsData(bool drawSelection)
 {
+    invalidateDragBase();
     // TODO refactor this for performance. The objects should not all be updated
     // at once every time
     QPixmap pixmapItem = m_context.origScreenshot;

@@ -27,4 +27,7 @@ protected:
 
 public slots:
     void pressed(CaptureContext& context) override;
+
+private:
+    bool m_insecurePixelate = false;
 };

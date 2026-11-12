@@ -15,7 +15,9 @@
 
 PixelateTool::PixelateTool(QObject* parent)
   : AbstractTwoPointTool(parent)
-{}
+{
+    m_insecurePixelate = ConfigHandler().insecurePixelate();
+}
 
 QIcon PixelateTool::icon(const QColor& background, bool inEditor) const
 {
@@ -62,7 +64,7 @@ CaptureTool* PixelateTool::copy(QObject* parent)
  */
 void PixelateTool::process(QPainter& painter, const QPixmap& pixmap)
 {
-    bool useInsecurePixelate = ConfigHandler().insecurePixelate();
+    const bool useInsecurePixelate = m_insecurePixelate;
 
     QRect selection = boundingRect().intersected(pixmap.rect());
     auto pixelRatio = pixmap.devicePixelRatio();

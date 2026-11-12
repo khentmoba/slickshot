@@ -37,4 +37,5 @@ public slots:
 private:
     QString m_tempString;
     bool m_valid;
+    bool m_drawOutline = false;
 };

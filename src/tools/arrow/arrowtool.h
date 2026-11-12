@@ -42,4 +42,5 @@ private:
 
     QPainterPath m_arrowPath;
     ArrowStyle m_arrowStyle = ArrowStyle::Default;
+    bool m_reverseArrow = false;
 };

@@ -130,6 +130,7 @@ ArrowTool::ArrowTool(QObject* parent)
         m_arrowStyle = static_cast<ArrowStyle>(configuredArrowStyle);
     }
 
+    m_reverseArrow = ConfigHandler().reverseArrow();
     setPadding(ArrowWidth / 2);
     m_supportsOrthogonalAdj = true;
     m_supportsDiagonalAdj = true;
@@ -240,7 +241,7 @@ void ArrowTool::copyParams(const ArrowTool* from, ArrowTool* to)
 
 void ArrowTool::process(QPainter& painter, const QPixmap& pixmap)
 {
-    bool isArrowReversed = ConfigHandler().reverseArrow();
+    const bool isArrowReversed = m_reverseArrow;
 
     const QPoint& head = isArrowReversed ? points().second : points().first;
     const QPoint& tail = isArrowReversed ? points().first : points().second;

@@ -206,45 +206,39 @@ void saveToClipboardMime(const QPixmap& capture, const QString& imageType)
     if (imageType == "jpeg") {
         imageWriter.setQuality(ConfigHandler().jpegQuality());
     }
-    imageWriter.write(capture.toImage());
-
-    QPixmap formattedPixmap;
-    bool isLoaded =
-      formattedPixmap.loadFromData(reinterpret_cast<uchar*>(array.data()),
-                                   array.size(),
-                                   imageType.toUpper().toUtf8());
-    if (isLoaded) {
-
-        auto* mimeData = new QMimeData();
-
-#if defined(Q_OS_MACOS)
-        // Publish the encoded bytes first (as public.png / public.jpeg) so
-        // apps pick them over TIFF, then setImageData for a public.tiff
-        // fallback that macOS can always access.
-        ensureEncodedImageUtiConverter();
-        mimeData->setData("image/" + imageType, array);
-        mimeData->setImageData(formattedPixmap.toImage());
-        QApplication::clipboard()->setMimeData(mimeData);
-#elif defined(USE_WAYLAND_CLIPBOARD)
-        if (QGuiApplication::platformName() == "wayland") {
-            mimeData->setImageData(formattedPixmap.toImage());
-            mimeData->setData(QStringLiteral("x-kde-force-image-copy"),
-                              QByteArray());
-            KSystemClipboard::instance()->setMimeData(mimeData,
-                                                      QClipboard::Clipboard);
-        } else {
-            mimeData->setData("image/" + imageType, array);
-            QApplication::clipboard()->setMimeData(mimeData);
-        }
-#else
-        mimeData->setData("image/" + imageType, array);
-        QApplication::clipboard()->setMimeData(mimeData);
-#endif
-
-    } else {
+    if (!imageWriter.write(capture.toImage())) {
         AbstractLogger::error()
           << QObject::tr("Error while saving to clipboard");
+        return;
     }
+
+    auto* mimeData = new QMimeData();
+
+#if defined(Q_OS_MACOS)
+    // Publish the encoded bytes first (as public.png / public.jpeg) so
+    // apps pick them over TIFF, then setImageData for a public.tiff
+    // fallback that macOS can always access.
+    ensureEncodedImageUtiConverter();
+    mimeData->setData("image/" + imageType, array);
+    mimeData->setImageData(
+      QImage::fromData(array, imageType.toUpper().toUtf8().constData()));
+    QApplication::clipboard()->setMimeData(mimeData);
+#elif defined(USE_WAYLAND_CLIPBOARD)
+    if (QGuiApplication::platformName() == "wayland") {
+        mimeData->setImageData(
+          QImage::fromData(array, imageType.toUpper().toUtf8().constData()));
+        mimeData->setData(QStringLiteral("x-kde-force-image-copy"),
+                          QByteArray());
+        KSystemClipboard::instance()->setMimeData(mimeData,
+                                                  QClipboard::Clipboard);
+    } else {
+        mimeData->setData("image/" + imageType, array);
+        QApplication::clipboard()->setMimeData(mimeData);
+    }
+#else
+    mimeData->setData("image/" + imageType, array);
+    QApplication::clipboard()->setMimeData(mimeData);
+#endif
 }
 
 // If data is saved to the clipboard before the notification is sent via
