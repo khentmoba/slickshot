@@ -18,7 +18,9 @@ int const MAX_COUNTER = 999;
 CircleCountTool::CircleCountTool(QObject* parent)
   : AbstractTwoPointTool(parent)
   , m_valid(false)
-{}
+{
+    m_drawOutline = ConfigHandler().drawCircleCounterOutline();
+}
 
 QIcon CircleCountTool::icon(const QColor& background, bool inEditor) const
 {
@@ -135,7 +137,7 @@ void CircleCountTool::process(QPainter& painter, const QPixmap& pixmap)
         painter.drawPath(path);
     }
 
-    if (ConfigHandler().drawCircleCounterOutline()) {
+    if (m_drawOutline) {
         painter.setPen(contrastColor);
         painter.setBrush(antiContrastColor);
         painter.drawEllipse(points().first,

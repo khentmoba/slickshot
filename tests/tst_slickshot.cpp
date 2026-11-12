@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <QApplication>
+#include <QClipboard>
+#include <QCursor>
+#include <QGuiApplication>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLabel>
+#include <QMimeData>
 #include <QPainter>
 #include <QPixmap>
 #include <QStandardPaths>
@@ -12,12 +17,20 @@
 #include <QWidget>
 
 #include "config/shortcutswidget.h"
+#include "tools/arrow/arrowtool.h"
+#include "tools/capturecontext.h"
 #include "tools/capturetool.h"
+#include "tools/invert/inverttool.h"
+#include "tools/pixelate/pixelatetool.h"
+#include "tools/rectangle/rectangletool.h"
 #include "utils/appupdate.h"
 #include "utils/screengrabber.h"
+#include "utils/screenshotsaver.h"
 #include "utils/snippingtoolmanager.h"
 #include "widgets/capture/buttonhandler.h"
 #include "widgets/capture/capturetoolbutton.h"
+#include "widgets/capture/capturetoolobjects.h"
+#include "widgets/capture/capturewidget.h"
 #include "widgets/capture/magnifierwidget.h"
 #if !defined(DISABLE_UPDATE_CHECKER)
 #include "widgets/updatenotificationwidget.h"
@@ -40,6 +53,12 @@ private slots:
     void testButtonHandlerMultiRowHitTesting();
     void testMagnifierWidgetHiDpiAndRender();
     void testShortcutsWidgetHiddenOnConstruction();
+    void testCaptureToolObjectsFindTopmost();
+    void testSaveToClipboardMimeRoundTrip();
+    void testComposeRangeSplitMatchesFull();
+    void testGridTileMatchesPerPaintDots();
+    void testGridTileCachePromotion();
+    void testMagnifierDrawsWithinReach();
 #if !defined(DISABLE_UPDATE_CHECKER)
     void testUpdateNotificationWidget();
 #endif
@@ -350,6 +369,242 @@ void SlickShotTests::testShortcutsWidgetHiddenOnConstruction()
 {
     ShortcutsWidget widget;
     QVERIFY(!widget.isVisible());
+}
+
+namespace {
+
+void addInvertObject(CaptureToolObjects& objects,
+                     QObject* owner,
+                     const QPoint& from,
+                     const QPoint& to)
+{
+    CaptureContext ctx;
+    ctx.color = Qt::red;
+    ctx.toolSize = 4;
+    ctx.mousePos = from;
+    auto* tool = new InvertTool(owner);
+    tool->drawStart(ctx);
+    tool->drawMove(to);
+    objects.append(tool);
+}
+
+} // namespace
+
+void SlickShotTests::testCaptureToolObjectsFindTopmost()
+{
+    QObject owner;
+    CaptureToolObjects objects(&owner);
+    addInvertObject(objects, &owner, QPoint(100, 100), QPoint(200, 200));
+    addInvertObject(objects, &owner, QPoint(300, 300), QPoint(400, 400));
+    addInvertObject(objects, &owner, QPoint(150, 150), QPoint(180, 180));
+    addInvertObject(objects, &owner, QPoint(1900, 1040), QPoint(1919, 1079));
+    addInvertObject(objects, &owner, QPoint(0, 0), QPoint(4, 4));
+
+    const QSize canvas(1920, 1080);
+    QCOMPARE(objects.find(QPoint(120, 120), canvas), 0);
+    QCOMPARE(objects.find(QPoint(160, 160), canvas), 2);
+    QCOMPARE(objects.find(QPoint(110, 110), canvas), 0);
+    QCOMPARE(objects.find(QPoint(97, 150), canvas), 0);
+    QCOMPARE(objects.find(QPoint(350, 350), canvas), 1);
+    QCOMPARE(objects.find(QPoint(250, 250), canvas), -1);
+    QCOMPARE(objects.find(QPoint(50, 50), canvas), -1);
+    QCOMPARE(objects.find(QPoint(1915, 1075), canvas), 3);
+    // The search square runs past the bottom-right corner here. Pixels
+    // outside the canvas must not count as hits on the top object.
+    QCOMPARE(objects.find(QPoint(1921, 1081), canvas), 3);
+    QCOMPARE(objects.find(QPoint(2, 2), canvas), 4);
+}
+
+void SlickShotTests::testComposeRangeSplitMatchesFull()
+{
+    QObject owner;
+    CaptureToolObjects objects(&owner);
+    CaptureContext ctx;
+    ctx.color = Qt::red;
+    ctx.toolSize = 4;
+
+    auto* pixelate = new PixelateTool(&owner);
+    ctx.mousePos = QPoint(40, 40);
+    pixelate->drawStart(ctx);
+    pixelate->drawMove(QPoint(200, 160));
+    objects.append(pixelate);
+
+    auto* rectangle = new RectangleTool(&owner);
+    ctx.mousePos = QPoint(60, 60);
+    rectangle->drawStart(ctx);
+    rectangle->drawMove(QPoint(120, 100));
+    objects.append(rectangle);
+
+    auto* arrow = new ArrowTool(&owner);
+    ctx.mousePos = QPoint(10, 150);
+    arrow->drawStart(ctx);
+    arrow->drawMove(QPoint(180, 20));
+    objects.append(arrow);
+
+    QPixmap original(256, 192);
+    original.fill(QColor(30, 90, 150));
+    {
+        QPainter painter(&original);
+        painter.fillRect(QRect(0, 0, 128, 96), QColor(200, 40, 40));
+    }
+
+    QPixmap full = original;
+    objects.composeRange(full, 0, objects.size());
+    const QImage expected = full.toImage();
+
+    // Dragging composes the objects below the moved one once, then the rest
+    // on top. Every split point must match a single full pass.
+    for (int split = 0; split <= objects.size(); ++split) {
+        QPixmap partial = original;
+        objects.composeRange(partial, 0, split);
+        objects.composeRange(partial, split, objects.size());
+        QVERIFY(partial.toImage() == expected);
+    }
+}
+
+void SlickShotTests::testGridTileMatchesPerPaintDots()
+{
+    const QColor color(255, 255, 255, 100);
+    const QPoint topLeft(13, 9);
+    // Far edge of the selection, deliberately off the grid lines
+    const QPointF farEdge(200.6, 150.4);
+    const QSizeF canvas(240, 160);
+
+    struct Case
+    {
+        qreal dpr;
+        int gridSize;
+    };
+    // Even step, HiDPI even step, and a fractional step (5 px grid at 2x)
+    const Case cases[] = { { 1.0, 10 }, { 2.0, 10 }, { 2.0, 5 } };
+    for (const Case& c : cases) {
+        const qreal scale = c.dpr;
+        const QSize pixels = (canvas * c.dpr).toSize();
+
+        // Reference: draw every dot directly, as a paint would
+        QImage expected(pixels, QImage::Format_ARGB32_Premultiplied);
+        expected.setDevicePixelRatio(c.dpr);
+        expected.fill(Qt::transparent);
+        {
+            QPainter painter(&expected);
+            painter.setPen(color);
+            painter.setBrush(QBrush(color));
+            const qreal step = c.gridSize / scale;
+            const qreal radius = 1 * scale;
+            for (int y = topLeft.y(); y < farEdge.y(); y += step) {
+                for (int x = topLeft.x(); x < farEdge.x(); x += step) {
+                    painter.drawEllipse(x, y, radius, radius);
+                }
+            }
+        }
+
+        QImage actual(pixels, QImage::Format_ARGB32_Premultiplied);
+        actual.setDevicePixelRatio(c.dpr);
+        actual.fill(Qt::transparent);
+        {
+            QPainter painter(&actual);
+            const QImage tile = CaptureWidget::renderGridTile(
+              farEdge - topLeft, c.dpr, scale, c.gridSize, color);
+            const int margin = CaptureWidget::gridTileMargin(scale);
+            painter.drawImage(topLeft - QPoint(margin, margin), tile);
+        }
+        QVERIFY(actual == expected);
+    }
+}
+
+void SlickShotTests::testGridTileCachePromotion()
+{
+    using Cache = CaptureGridTileCache;
+    Cache cache;
+    Cache::Key key{ QPointF(200, 150), 1.0, 1.0, 10, qRgb(255, 255, 255) };
+
+    QVERIFY(Cache::supportsDevicePixelRatio(1.0, 1.0));
+    QVERIFY(Cache::supportsDevicePixelRatio(2.0, 2.0));
+    QVERIFY(!Cache::supportsDevicePixelRatio(1.25, 1.25));
+    QVERIFY(!Cache::supportsDevicePixelRatio(1.5, 1.5));
+    QVERIFY(!Cache::supportsDevicePixelRatio(2.0, 1.0));
+
+    QVERIFY(cache.request(key) == Cache::Request::DrawDirect);
+    QVERIFY(cache.tile().isNull());
+    QVERIFY(cache.request(key) == Cache::Request::BuildTile);
+
+    QImage tile(8, 8, QImage::Format_ARGB32_Premultiplied);
+    tile.fill(Qt::white);
+    cache.setTile(tile);
+    QVERIFY(cache.request(key) == Cache::Request::UseCachedTile);
+    QVERIFY(!cache.tile().isNull());
+
+    Cache::Key changed = key;
+    changed.limit.setX(changed.limit.x() + 1);
+    QVERIFY(cache.request(changed) == Cache::Request::DrawDirect);
+    QVERIFY(cache.tile().isNull());
+    QVERIFY(cache.request(changed) == Cache::Request::BuildTile);
+
+    cache.setTile(tile);
+    cache.clear();
+    QVERIFY(cache.tile().isNull());
+    QVERIFY(cache.request(changed) == Cache::Request::DrawDirect);
+    QVERIFY(cache.tile().isNull());
+}
+
+void SlickShotTests::testMagnifierDrawsWithinReach()
+{
+    if (QGuiApplication::platformName() != QLatin1String("offscreen")) {
+        QSKIP("Moves the cursor; runs only on the offscreen platform.");
+    }
+    // The capture window repaints only a box of MagnifierWidget::reach around
+    // the cursor, so everything the loupe draws has to stay inside that box.
+    QPixmap shot(400, 300);
+    shot.fill(Qt::darkGray);
+    QWidget parent;
+    parent.resize(1280, 720);
+    MagnifierWidget magnifier(shot, QColor(2, 132, 199), true, &parent);
+    magnifier.resize(1280, 720);
+
+    const QPoint cursor(600, 360);
+    QCursor::setPos(parent.mapToGlobal(cursor));
+    QImage image(1280, 720, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    magnifier.render(&image, QPoint(), QRegion(), QWidget::DrawChildren);
+
+    QRect painted;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            if (qAlpha(image.pixel(x, y)) != 0) {
+                painted = painted.united(QRect(x, y, 1, 1));
+            }
+        }
+    }
+    QVERIFY(!painted.isNull());
+    const int reach = MagnifierWidget::reach;
+    const QRect box(cursor - QPoint(reach, reach), QSize(2 * reach, 2 * reach));
+    QCOMPARE(box.united(painted), box);
+}
+
+void SlickShotTests::testSaveToClipboardMimeRoundTrip()
+{
+    if (QGuiApplication::platformName() != QLatin1String("offscreen")) {
+        QSKIP("Uses the clipboard; runs only on the offscreen platform.");
+    }
+    QPixmap capture(64, 48);
+    capture.fill(QColor(12, 34, 56));
+
+    saveToClipboardMime(capture, QStringLiteral("png"));
+    const QMimeData* pngData = QGuiApplication::clipboard()->mimeData();
+    QVERIFY(pngData != nullptr);
+    QVERIFY(pngData->hasFormat(QStringLiteral("image/png")));
+    const QImage png =
+      QImage::fromData(pngData->data(QStringLiteral("image/png")), "PNG");
+    QCOMPARE(png.size(), QSize(64, 48));
+    QCOMPARE(png.pixelColor(10, 10), QColor(12, 34, 56));
+
+    saveToClipboardMime(capture, QStringLiteral("jpeg"));
+    const QMimeData* jpegData = QGuiApplication::clipboard()->mimeData();
+    QVERIFY(jpegData != nullptr);
+    QVERIFY(jpegData->hasFormat(QStringLiteral("image/jpeg")));
+    const QImage jpeg =
+      QImage::fromData(jpegData->data(QStringLiteral("image/jpeg")), "JPEG");
+    QCOMPARE(jpeg.size(), QSize(64, 48));
 }
 
 #if !defined(DISABLE_UPDATE_CHECKER)

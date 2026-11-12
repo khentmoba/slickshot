@@ -15,11 +15,13 @@
 #include "tools/capturetool.h"
 #include "utils/confighandler.h"
 #include "widgets/capture/buttonhandler.h"
+#include "widgets/capture/capturegridtilecache.h"
 #include "widgets/capture/capturetoolbutton.h"
 #include "widgets/capture/capturetoolobjects.h"
 #include "widgets/capture/magnifierwidget.h"
 #include "widgets/capture/selectionwidget.h"
 
+#include <QImage>
 #include <QMessageBox>
 #include <QPointer>
 #include <QTimer>
@@ -100,6 +102,17 @@ public:
     void removeToolObject(int index = -1);
     void showxywh();
 
+    // Blank border, in logical pixels, around a grid tile. Public so tests can
+    // place a tile the same way drawGrid does.
+    static int gridTileMargin(qreal scale);
+    // Renders the grid dots for one selection. Public so tests can compare it
+    // with a direct per-dot draw.
+    static QImage renderGridTile(const QPointF& limit,
+                                 qreal dpr,
+                                 qreal scale,
+                                 int gridSize,
+                                 const QColor& color);
+
 protected:
     void paintEvent(QPaintEvent* paintEvent) override;
     void mousePressEvent(QMouseEvent* mouseEvent) override;
@@ -157,6 +170,15 @@ private:
     void drawErrorMessage(const QString& msg, QPainter* painter);
     void drawInactiveRegion(QPainter* painter);
     void drawToolsData(bool drawSelection = true);
+    void drawGrid(QPainter& painter);
+    static void drawGridDots(QPainter& painter,
+                             const QPointF& limit,
+                             qreal scale,
+                             int gridSize,
+                             const QColor& color);
+    void updateMagnifierArea();
+    void redrawFromLayer(int layer);
+    void invalidateDragBase();
     void drawObjectSelection();
 
     void processPixmapWithTool(QPixmap* pixmap, CaptureTool* tool);
@@ -240,6 +262,18 @@ private:
     // Grid
     bool m_displayGrid{ false };
     int m_gridSize{ 10 };
+
+    // Grid tile cache promotes only extents unchanged across consecutive
+    // paints.
+    CaptureGridTileCache m_gridTileCache;
+
+    // Composite of everything below the layer being dragged, reused across
+    // mouse moves while that layer stays the same
+    QPixmap m_dragBase;
+    int m_dragBaseLayer{ -1 };
+
+    // Area the magnifier was last drawn in, so its old position is cleared
+    QRect m_magnifierArea;
 
     bool m_clipboardWorkaroundDone{ false };
 };

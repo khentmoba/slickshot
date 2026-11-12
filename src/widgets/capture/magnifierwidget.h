@@ -17,6 +17,10 @@ public:
                                   qreal dpr,
                                   const QSize& physicalSize);
 
+    // How far, in logical pixels, the loupe and its color readout reach from
+    // the cursor. The capture window repaints only this box around the cursor.
+    static constexpr int reach = 240;
+
 protected:
     void paintEvent(QPaintEvent*) override;
 
