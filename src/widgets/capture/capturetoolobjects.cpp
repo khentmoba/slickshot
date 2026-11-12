@@ -63,26 +63,26 @@ int CaptureToolObjects::find(const QPoint& pos, QSize captureSize)
     if (m_captureToolObjects.empty()) {
         return -1;
     }
-    QPixmap pixmap(captureSize);
-    // QPixmap(size) can have no alpha channel. fill(transparent) gives it one,
-    // so the per-object fillRect in findWithRadius clears to zero, not black.
-    pixmap.fill(Qt::transparent);
     // first attempt to find at exact position
-    int index = findWithRadius(pixmap, pos, SEARCH_RADIUS_NEAR);
+    int index = findWithRadius(pos, captureSize, SEARCH_RADIUS_NEAR);
     if (-1 == index) {
         // second attempt to find at position with radius
-        index = findWithRadius(pixmap, pos, SEARCH_RADIUS_FAR);
+        index = findWithRadius(pos, captureSize, SEARCH_RADIUS_FAR);
     }
     return index;
 }
 
-int CaptureToolObjects::findWithRadius(QPixmap& pixmap,
-                                       const QPoint& pos,
+int CaptureToolObjects::findWithRadius(const QPoint& pos,
+                                       QSize captureSize,
                                        int radius)
 {
-    const QRect canvas = pixmap.rect();
+    const QRect canvas(QPoint(0, 0), captureSize);
+    QPixmap patch;
     for (int index = size() - 1; index >= 0; --index) {
         const QPointer<CaptureTool> toolItem = m_captureToolObjects.at(index);
+        if (toolItem.isNull()) {
+            continue;
+        }
         int currentRadius = radius;
         if (toolItem->type() == CaptureTool::TYPE_TEXT) {
             if (currentRadius > SEARCH_RADIUS_NEAR) {
@@ -107,20 +107,27 @@ int CaptureToolObjects::findWithRadius(QPixmap& pixmap,
             continue;
         }
 
+        if (patch.size() != area.size()) {
+            patch = QPixmap(area.size());
+        }
+        // QPixmap(size) can have no alpha channel. fill(transparent) gives it
+        // one, so the patch starts fully transparent, not black.
+        patch.fill(Qt::transparent);
+
         // Draw only this object, and only inside its own area, so objects
         // above it cannot leak into the result.
         {
-            QPainter painter(&pixmap);
-            painter.setCompositionMode(QPainter::CompositionMode_Source);
-            painter.fillRect(area, Qt::transparent);
-            painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-            painter.setClipRect(area);
-            toolItem->drawSearchArea(painter, pixmap);
+            QPainter painter(&patch);
+            painter.translate(-area.topLeft());
+            toolItem->drawSearchArea(painter, patch);
         }
-        const QImage image = pixmap.copy(area).toImage();
+        const QImage image =
+          patch.toImage().convertToFormat(QImage::Format_ARGB32);
         for (int row = 0; row < image.height(); ++row) {
+            const QRgb* scan =
+              reinterpret_cast<const QRgb*>(image.constScanLine(row));
             for (int column = 0; column < image.width(); ++column) {
-                if (image.pixel(column, row) != 0) {
+                if (scan[column] != 0) {
                     // object was found, return it index (layer index)
                     return index;
                 }
