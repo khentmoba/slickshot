@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 # cmake_policy(SET CMP0076 OLD)
 
-set(FLAMESHOT_VERSION 0.1.2)
+set(FLAMESHOT_VERSION 0.1.3)
 
 # SlickShot (standalone fork of Flameshot)
 set(GIT_API_URL "https://api.github.com/repos/khentmoba/slickshot/releases/latest")
