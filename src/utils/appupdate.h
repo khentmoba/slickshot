@@ -19,6 +19,10 @@ namespace AppUpdate {
 
 AppUpdateInfo releaseInfo(const QJsonObject& release);
 
+// True only for an HTTPS URL hosted on the hosts GitHub uses for release
+// assets. Used both when parsing release metadata and before downloading.
+bool isTrustedAssetUrl(const QString& url);
+
 // True when appPath is inside installRoot and the release has both the
 // installer and its checksum.
 bool canInstallInPlaceForPaths(const AppUpdateInfo& info,

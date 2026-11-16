@@ -10,14 +10,72 @@
 
 #include <QBuffer>
 #include <QDesktopServices>
+#include <QDir>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QSettings>
 #include <QShortcut>
+#include <QUrl>
 #include <QUrlQuery>
+#include <QUuid>
+
+namespace {
+
+// A hidden sidecar next to the history thumbnails maps a random, opaque id to
+// the Imgur deletehash. Keeping the token out of the (shareable) history
+// filename prevents leaking the deletion capability when a thumbnail is shared.
+constexpr char kDeleteTokenFile[] = ".imgur_tokens";
+
+QString deleteTokenFilePath()
+{
+    return QDir(History().path()).filePath(QLatin1String(kDeleteTokenFile));
+}
+
+QString readDeleteToken(const QString& id)
+{
+    if (id.isEmpty()) {
+        return {};
+    }
+    QSettings store(deleteTokenFilePath(), QSettings::IniFormat);
+    return store.value(QStringLiteral("tokens/") + id).toString();
+}
+
+void writeDeleteToken(const QString& id, const QString& token)
+{
+    if (id.isEmpty() || token.isEmpty()) {
+        return;
+    }
+    QSettings store(deleteTokenFilePath(), QSettings::IniFormat);
+    store.setValue(QStringLiteral("tokens/") + id, token);
+    store.sync();
+}
+
+// The Imgur "link" comes from the network and is untrusted. Only keep a plain
+// basename, rejecting traversal, separators and control characters.
+QString safeImageName(const QString& path)
+{
+    const QString base = QFileInfo(path).fileName();
+    if (base.isEmpty() || base == QLatin1String(".") ||
+        base == QLatin1String("..") || base.contains(QLatin1String("..")) ||
+        base.contains(QLatin1Char('-'))) {
+        return {};
+    }
+    for (QChar c : base) {
+        const ushort code = c.unicode();
+        if (code < 0x20 || (code >= 0x7f && code < 0xa0) ||
+            c == QLatin1Char('/') || c == QLatin1Char('\\')) {
+            return {};
+        }
+    }
+    return base;
+}
+
+} // namespace
 
 ImgurUploader::ImgurUploader(const QPixmap& capture, QWidget* parent)
   : ImgUploaderBase(capture, parent)
@@ -39,19 +97,23 @@ void ImgurUploader::handleReply(QNetworkReply* reply)
         QJsonObject data = json[QStringLiteral("data")].toObject();
         setImageURL(data[QStringLiteral("link")].toString());
 
-        auto deleteToken = data[QStringLiteral("deletehash")].toString();
+        const QString deleteToken =
+          data[QStringLiteral("deletehash")].toString();
 
-        // save history
-        m_currentImageName = imageURL().toString();
-        int lastSlash = m_currentImageName.lastIndexOf("/");
-        if (lastSlash >= 0) {
-            m_currentImageName = m_currentImageName.mid(lastSlash + 1);
+        // Only use a safe basename from the untrusted link, and carry an opaque
+        // id in the filename instead of the deletehash itself.
+        const QString opaqueId = QUuid::createUuid().toString(QUuid::Id128);
+        QString imageName = safeImageName(imageURL().path());
+        if (imageName.isEmpty()) {
+            imageName = opaqueId + QStringLiteral(".png");
         }
+
+        // Keep the deletion token in a sidecar, never in the shared filename.
+        writeDeleteToken(opaqueId, deleteToken);
 
         // save image to history
         History history;
-        m_currentImageName =
-          history.packFileName("imgur", deleteToken, m_currentImageName);
+        m_currentImageName = history.packFileName("imgur", opaqueId, imageName);
         history.save(pixmap(), m_currentImageName);
 
         emit uploadOk(imageURL());
@@ -89,7 +151,7 @@ void ImgurUploader::upload()
     url.setQuery(urlQuery);
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader,
-                      "application/application/x-www-form-urlencoded");
+                      "application/x-www-form-urlencoded");
     request.setRawHeader("Authorization",
                          QStringLiteral("Client-ID %1")
                            .arg(ConfigHandler().uploadClientSecret())
@@ -102,8 +164,21 @@ void ImgurUploader::deleteImage(const QString& fileName,
                                 const QString& deleteToken)
 {
     Q_UNUSED(fileName)
-    bool successful = QDesktopServices::openUrl(
-      QUrl(QStringLiteral("https://imgur.com/delete/%1").arg(deleteToken)));
+    // New entries carry an opaque id in the filename; look the real token up
+    // in the sidecar. Older entries embedded the token directly, so fall back
+    // to the passed value when there is no sidecar entry for the id.
+    QString token = deleteToken;
+    const QString stored = readDeleteToken(deleteToken);
+    if (!stored.isEmpty()) {
+        token = stored;
+    }
+
+    // The token is untrusted input from a filename/JSON, so percent-encode it
+    // before placing it in the URL path.
+    const QByteArray encoded = QUrl::toPercentEncoding(token);
+    const bool successful = QDesktopServices::openUrl(
+      QUrl(QStringLiteral("https://imgur.com/delete/%1")
+             .arg(QString::fromLatin1(encoded))));
     if (!successful) {
         notification()->showMessage(tr("Unable to open the URL."));
     }

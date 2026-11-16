@@ -19,10 +19,6 @@
 
 
 
-## Preview
-
-![image](https://raw.githubusercontent.com/flameshot-org/flameshot/master/data/img/preview/animatedUsage.gif)
-
 ## Index
 
 - [Features](#features)
@@ -70,6 +66,11 @@
 - Upload to Imgur.
 
 ## Usage
+
+In the commands below, `flameshot` means the SlickShot executable. The binary is
+still named `flameshot.exe` on Windows (and `flameshot` elsewhere) by design,
+for compatibility with inherited shortcuts and scripts; the product itself is
+SlickShot.
 
 Executing the command `flameshot` without parameters will launch a running
 instance of the program in the background without taking actions.
@@ -122,7 +123,7 @@ Example commands:
 
 In case of doubt choose the first or the second command as shortcut in your favorite desktop environment.
 
-A systray icon will be in your system's panel while Flameshot is running.
+A systray icon will be in your system's panel while SlickShot is running.
 Do a right click on the tray icon and you'll see some menu items to open the configuration window and the information window.
 Check out the About window to see all available shortcuts in the graphical capture mode.
 
@@ -136,7 +137,7 @@ If you require console output, run `flameshot-cli.exe` instead. `flameshot-cli.e
 
 ### Usage on Hyprland / Sway / wlroots
 
-Please [refer to this document](docs/UsageHyprlandSwayWlroots.md) for detailed instructions on how to set up Flameshot on Hyprland, Sway, and wlroots-based Wayland compositors.
+Please [refer to this document](docs/UsageHyprlandSwayWlroots.md) for detailed instructions on how to set up SlickShot on Hyprland, Sway, and wlroots-based Wayland compositors.
 
 ### Usage on minimal X11 window managers
 
@@ -144,7 +145,7 @@ On minimal X11 window managers (i3, dwm, xmonad, bspwm, ...), capturing may fail
 
 ### CLI configuration
 
-You can use the graphical menu to configure Flameshot, but alternatively you can use your terminal or scripts to do so.
+You can use the graphical menu to configure SlickShot, but alternatively you can use your terminal or scripts to do so.
 
 - Open the configuration menu:
 
@@ -166,13 +167,25 @@ You can use the graphical menu to configure Flameshot, but alternatively you can
 
 ### Config file
 
-You can also edit some of the settings (like overriding the default colors) in the configuration file.\
-Linux path: `~/.config/flameshot/flameshot.ini`.\
-Windows path: `C:\Users\{YOURNAME}\AppData\Roaming\flameshot\flameshot.ini`.
+You can also edit some of the settings (like overriding the default colors) in
+the configuration file. Where it lives depends on the build:
 
-When copying over the config file from Linux to Windows or vice versa,
-make sure to correct the `savePath` variable,\
-so that the screenshots save in the right directory on your desired file system.
+- **Release installer builds (Windows)** use portable config disabled
+  (`USE_PORTABLE_CONFIG=false`). Settings are stored through QSettings in user
+  scope, at
+  `C:\Users\{YOURNAME}\AppData\Roaming\flameshot\flameshot.ini`
+  (`%APPDATA%\flameshot\flameshot.ini`). The `flameshot` directory name is
+  inherited from Flameshot; the file belongs to SlickShot. Upgrades keep this
+  file, so your settings survive a reinstall.
+- **Portable builds** use portable config enabled (`USE_PORTABLE_CONFIG=true`).
+  The settings file is `flameshot.ini` in the same folder as `flameshot.exe`.
+  Source builds on Windows default to portable config; the release installer
+  explicitly turns it off.
+- **Linux builds** use `~/.config/flameshot/flameshot.ini`.
+
+When copying over the config file between platforms or between an installer
+build and a portable build, make sure to correct the `savePath` variable so that
+screenshots are saved in the right directory.
 
 ## Keyboard shortcuts
 
@@ -224,7 +237,7 @@ These shortcuts are available in GUI mode:
   - <kbd>Shift</kbd> + <kbd>Prt Sc</kbd>: Capture history / full capture
   - Windows screen clipping protocol (`ms-screenclip:`), Action Center "Screen Snip", and `SnippingTool.exe` redirection
 - macOS: <kbd>cmd</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd> (can be changed in the settings)
-- Linux: Flameshot doesn't yet support <kbd>Prt Sc</kbd> out of the box, but you can set this up with a bit of configuration:
+- Linux: SlickShot doesn't yet support <kbd>Prt Sc</kbd> out of the box, but you can set this up with a bit of configuration:
 
 #### On KDE Plasma desktop
 
@@ -232,8 +245,8 @@ To make configuration easier, there's a [file](docs/shortcuts-config/flameshot-s
 
 |  Keys                                                  |  Description                                                                       |
 |---                                                     |---                                                                                 |
-| <kbd>Prt Sc</kbd>                                      | Start the Flameshot screenshot tool and take a screenshot                          |
-| <kbd>Ctrl</kbd> + <kbd>Prt Sc</kbd>                    | Wait for 3 seconds, then start the Flameshot screenshot tool and take a screenshot |
+| <kbd>Prt Sc</kbd>                                      | Start the SlickShot screenshot tool and take a screenshot                          |
+| <kbd>Ctrl</kbd> + <kbd>Prt Sc</kbd>                    | Wait for 3 seconds, then start the SlickShot screenshot tool and take a screenshot |
 | <kbd>Shift</kbd> + <kbd>Prt Sc</kbd>                   | Take a full-screen (all monitors) screenshot and save it                           |
 | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Prt Sc</kbd> | Take a full-screen (all monitors) screenshot and copy it to the clipboard          |
 
@@ -241,7 +254,7 @@ If you don't like the defaults, they can be changed later.
 
 Steps for using the configuration:
 
-1. The configuration file makes Flameshot automatically save screenshots to `~/Pictures/Screenshots` without opening the save dialog. Make sure that folder exists by running:
+1. The configuration file makes SlickShot automatically save screenshots to `~/Pictures/Screenshots` without opening the save dialog. Make sure that folder exists by running:
 
     ```shell
     mkdir -p ~/Pictures/Screenshots
@@ -252,23 +265,18 @@ Steps for using the configuration:
 
     ```shell
     cd ~/Desktop
-    wget https://raw.githubusercontent.com/flameshot-org/flameshot/master/docs/shortcuts-config/flameshot-shortcuts-kde.khotkeys
+    wget https://raw.githubusercontent.com/khentmoba/slickshot/master/docs/shortcuts-config/flameshot-shortcuts-kde.kksrc
     ```
 3. Make sure you have the `khotkeys` installed using your package manager to enable custom shortcuts in KDE Plasma.
 4. Go to _System Settings_ → _Shortcuts_ → _Custom Shortcuts_.
-5. If an entry exists for Spectacle (the default KDE screenshot utility), you'll need to disable it because its shortcuts might conflict with Flameshot's. Do this by unchecking the _Spectacle_ entry.
+5. If an entry exists for Spectacle (the default KDE screenshot utility), you'll need to disable it because its shortcuts might conflict with SlickShot's. Do this by unchecking the _Spectacle_ entry.
 6. Click _Edit_ → _Import..._, navigate to the configuration file and open it.
-7. Now the Flameshot entry should appear in the list. Click _Apply_ to apply the changes.
+7. Now the SlickShot entry should appear in the list. Click _Apply_ to apply the changes.
 8. If you want to change the default hotkeys, you can expand the entry, select the appropriate action and modify it as you wish; the process is pretty self-explanatory.
-9. If you installed Flameshot as a Flatpak, you will need to create a symlink to the command:
-
-    ```shell
-    ln -s /var/lib/flatpak/exports/bin/org.flameshot.Flameshot ~/.local/bin/flameshot
-    ```
 
 #### On Gnome (Ubuntu, Fedora and more)
 
-To use Flameshot instead of the default screenshot application in Gnome we need to remove the binding on <kbd>Prt Sc</kbd> key, and then create a new binding for `flameshot gui` ([adapted](https://askubuntu.com/posts/1039949/revisions) from [Pavel's answer on AskUbuntu](https://askubuntu.com/revisions/1036473/1)).
+To use SlickShot instead of the default screenshot application in Gnome we need to remove the binding on <kbd>Prt Sc</kbd> key, and then create a new binding for `flameshot gui` (the SlickShot executable) ([adapted](https://askubuntu.com/posts/1039949/revisions) from [Pavel's answer on AskUbuntu](https://askubuntu.com/revisions/1036473/1)).
 
 1. Remove the binding on <kbd>Prt Sc</kbd>:
   
@@ -278,11 +286,11 @@ To use Flameshot instead of the default screenshot application in Gnome we need 
   
    Go to _Settings_ > _Keyboard_ > _View and Customise Shortcuts_ > _Custom shortcuts_ and press the '+' button at the bottom.
 
-3. Name the command as you like it, e.g. `flameshot`. And in the command insert `/usr/bin/flameshot gui` or `flatpak run org.flameshot.Flameshot gui` if installed via flatpak.
+3. Name the command as you like it, e.g. `SlickShot`. In the command, insert the path to the SlickShot executable followed by `gui` (for example `/usr/bin/flameshot gui` if installed there).
 
 4. Then click "_Set Shortcut.._" and press <kbd>Prt Sc</kbd>. This will show as "_print_".
 
-Now every time you press <kbd>Prt Sc</kbd>, it will start the Flameshot GUI instead of the default application.
+Now every time you press <kbd>Prt Sc</kbd>, it will start the SlickShot GUI instead of the default application.
 
 #### On XFCE 4
 
@@ -296,7 +304,7 @@ Now every time you press <kbd>Prt Sc</kbd>, it will start the Flameshot GUI inst
     ```
 4. Replace `xfce4-screenshooter -fd 1` with `flameshot gui`
 
-Now every time you press <kbd>Prt Sc</kbd> it will start Flameshot GUI instead of the default application.
+Now every time you press <kbd>Prt Sc</kbd> it will start SlickShot GUI instead of the default application.
 
 #### On Fluxbox
 
@@ -316,69 +324,47 @@ Now every time you press <kbd>Prt Sc</kbd> it will start Flameshot GUI instead o
 
 - Press <kbd>Enter</kbd> or <kbd>Ctrl</kbd> + <kbd>C</kbd> when you are in a capture mode and you don't have an active selection and the whole desktop will be copied to your clipboard. Pressing <kbd>Ctrl</kbd> + <kbd>S</kbd> will save your capture to a file. Check the [Shortcuts](#keyboard-shortcuts) for more information.
 
-- Flameshot works best with a desktop environment that includes D-Bus. See this [article](https://wiki.archlinux.org/title/Flameshot#Troubleshooting) for tips on using Flameshot in a minimal window manager (dwm, i3, xmonad, etc).
+- SlickShot works best with a desktop environment that includes D-Bus. The upstream [Flameshot troubleshooting article](https://wiki.archlinux.org/title/Flameshot#Troubleshooting) has general tips that also apply to SlickShot's inherited Linux support in minimal window managers (dwm, i3, xmonad, etc).
 
-- In order to speed up the first launch of Flameshot (D-Bus init of the app can be slow), consider starting the application automatically on boot.
-    - Quick tip: If you don't have Flameshot to autostart at boot and you want to set keyboard shortcut, use the following as the command for the keybinding:
+- In order to speed up the first launch of SlickShot (D-Bus init of the app can be slow), consider starting the application automatically on boot.
+    - Quick tip: If you don't have SlickShot to autostart at boot and you want to set a keyboard shortcut, use the following as the command for the keybinding:
     ```sh
     ( flameshot &; ) && ( sleep 0.5s && flameshot gui )
     ```
 
 ## Installation
 
-Flameshot can be installed on Linux, Microsoft Windows, and macOS.
+SlickShot is Windows-first. Ready-made Windows builds are published on
+[the SlickShot releases page](https://github.com/khentmoba/slickshot/releases).
+On Linux and macOS, build from source (see [Compilation](#compilation)).
 
 ### Prebuilt packages
 
-Some prebuilt packages are provided on [the release page of the GitHub project repository](https://github.com/flameshot-org/flameshot/releases).
+Windows releases provide a per-user installer (`.exe`) and a portable ZIP, each
+with a `.sha256sum` checksum file, on
+[the SlickShot releases page](https://github.com/khentmoba/slickshot/releases).
+No signing is applied to these builds; see [Code Signing Policy](#code-signing-policy).
 
 ### Packages from Repository
 
-There are packages available in the repository of some Linux distributions:
-
-- [Arch](https://archlinux.org/packages/extra/x86_64/flameshot/): `pacman -S flameshot`
-  + Snapshot also available via AUR: [flameshot-git](https://aur.archlinux.org/packages/flameshot-git).
-- [Debian 10+](https://tracker.debian.org/pkg/flameshot): `apt install flameshot`
-  + Package for Debian 9 ("Stretch") also [available via stretch-backports](https://backports.debian.org/).
-- [Ubuntu](https://launchpad.net/ubuntu/+source/flameshot): `apt install flameshot`
-  + A [PPA supporting Ubuntu 22.04 and newer](https://launchpad.net/~quentiumyt/+archive/ubuntu/flameshot) is provided by
-[Quentin Lienhardt](https://github.com/QuentiumYT) that offers an up-to-date version of `flameshot`.
-- [openSUSE](https://software.opensuse.org/package/flameshot): `zypper install flameshot`
-- [Void Linux](https://github.com/void-linux/void-packages/tree/master/srcpkgs/flameshot): `xbps-install flameshot`
-- [Solus](https://dev.getsol.us/source/flameshot/): `eopkg it flameshot`
-- [Fedora](https://src.fedoraproject.org/rpms/flameshot): `dnf install flameshot`
-- [NixOS](https://search.nixos.org/packages?query=flameshot): `nix-env -iA nixos.flameshot`
-- [ALT](https://packages.altlinux.org/en/sisyphus/srpms/flameshot/): `su - -c "apt-get install flameshot"`
-- [Snap/Flatpak/AppImage](https://github.com/flameshot-org/packages)
-- [Docker](https://github.com/ManuelLR/docker-flameshot)
-- [Windows](https://github.com/majkinetor/au-packages/tree/master/flameshot)
+SlickShot is a separate fork of Flameshot and is not packaged by Linux
+distributions or third-party repositories. Distribution packages named
+`flameshot` install Flameshot, not SlickShot. Use a SlickShot release (Windows)
+or build from source.
 
 ### macOS
 
-- [MacPorts](https://www.macports.org): `sudo port selfupdate && sudo port install flameshot`
-- Homebrew:
-```
-brew tap flameshot-org/flameshot
-brew trust --cask flameshot-org/flameshot/flameshot-org-flameshot
-brew install  flameshot-org-flameshot
-```
-
-**Note** that because of macOS security features, you may not be able to open flameshot when installed using brew.
-If you see the message `“flameshot” cannot be opened because the developer cannot be verified.` you will need to
-follow the steps below:
-1. Go to the Applications folder (Finder > Go > Applications, or <kbd>Shift</kbd>+<kbd>Command</kbd>+<kbd>A</kbd>)
-1. Right-Click on "flameshot.app" and choose "Open" from the context menu
-2. In the dialog click "Open"
-
-On MacOs 15 and above, you will have to go to system settings -> privacy and security after doing this and click "Open Anyway" or you can open flameshot first time with the following command.
-
-```sudo xattr -rd com.apple.quarantine /Applications/flameshot.app```
-
-After following all those steps above, `flameshot` will open without problems in your Mac.
+There is no official macOS package for SlickShot. Build it from source using
+the CMake commands in [Compilation](#compilation); the `flameshot` command in
+those instructions runs the SlickShot binary.
 
 ### Windows
 
-- [Scoop](https://github.com/ScoopInstaller/Extras/blob/master/bucket/flameshot.json): `scoop install flameshot`
+Download the installer (`SlickShot-*-win64-setup.exe`) or the portable ZIP from
+[the SlickShot releases page](https://github.com/khentmoba/slickshot/releases).
+The installer is per-user and does not require administrator rights. There is
+no SlickShot Scoop package; `scoop install flameshot` installs Flameshot, not
+SlickShot.
 
 When downloaded on Windows (via installer or portable package), SlickShot automatically replaces the default Windows Snipping Tool:
 - Intercepts **<kbd>Win</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>** and **<kbd>Prt Sc</kbd>** via system-level low-level hooks for instant capture.
@@ -388,19 +374,12 @@ When downloaded on Windows (via installer or portable package), SlickShot automa
 
 Can be toggled anytime in SlickShot Settings under **Shortcuts** -> **Replace Windows Snipping Tool**.
 
-<details>
-  <summary>Expand this section to see what distros are using an up to date version of flameshot</summary>
-  <a href="https://repology.org/metapackage/flameshot/versions">
-    <img src="https://repology.org/badge/vertical-allrepos/flameshot.svg" alt="Packaging status">
-  </a>
-</details>
-
 ### Tray icon
 
-**Note** that for the Flameshot icon to appear in your tray area, you should have a systray software installed. This is especially true for users who use minimal [window managers](https://wiki.archlinux.org/title/window_manager) such as [dwm](https://dwm.suckless.org/). In some [Desktop Environment](https://wiki.archlinux.org/title/Desktop_environment) installations (e.g Gnome), the systray might be missing and you can install an application or plugin (e.g [Gnome shell extension](https://extensions.gnome.org/extension/1503/tray-icons/)) to add the systray to your setup. It has been [reported](https://github.com/flameshot-org/flameshot/issues/1009#issuecomment-700781081)) that icon of some software, including Flameshot, does not show in [gnome-shell-extension-appindicator](https://github.com/ubuntu/gnome-shell-extension-appindicator).
+**Note** that for the SlickShot icon to appear in your tray area, you should have systray software installed. This is especially true for users who use minimal [window managers](https://wiki.archlinux.org/title/window_manager) such as [dwm](https://dwm.suckless.org/). In some [desktop environments](https://wiki.archlinux.org/title/Desktop_environment) (for example GNOME), the systray might be missing, so you may need an application or plugin such as the [GNOME Shell extension](https://extensions.gnome.org/extension/1503/tray-icons/) to add it. Some systray implementations do not show every application's icon; try another indicator extension if that happens.
 
 
-Alternatively, in case you don't want to have a systray, you can always call Flameshot from the terminal. See [Usage section](#usage).
+Alternatively, in case you don't want to have a systray, you can always call SlickShot from the terminal. See [Usage section](#usage).
 
 ## Compilation
 
@@ -499,17 +478,17 @@ brew install cmake
 
 ### Build
 
-After installing all the dependencies, Flameshot can be built.
+After installing all the dependencies, SlickShot can be built.
 
 #### Installation/build dir
 For the translations to be loaded correctly, the build process needs to be aware of where you want
-to install Flameshot.
+to install SlickShot.
 
 ```shell
 # Directory where build files will be placed, may be relative
 export BUILD_DIR=build
 
-# Directory prefix where Flameshot will be installed. If you are just building and don't want to
+# Directory prefix where SlickShot will be installed. If you are just building and don't want to
 # install, comment this environment variable.
 # This excludes the bin/flameshot part of the install,
 # e.g. in /opt/flameshot/bin/flameshot, the CMAKE_INSTALL_PREFIX is /opt/flameshot
@@ -526,14 +505,14 @@ cmake -S . -B "$BUILD_DIR" \
     && cmake --build "$BUILD_DIR"
 ```
 
-When the `cmake --build` command has completed you can launch Flameshot from the `project_folder/build/src` folder.
+When the `cmake --build` command has completed you can launch SlickShot from the `project_folder/build/src` folder.
 
 ### Install
 
 Note that if you install from source, there _is no_ uninstaller, so consider installing to a custom directory.
 
 #### To install into a custom directory
-Make sure you are using cmake `>= 3.29` and build Flameshot with `$CMAKE_INSTALL_PREFIX` set to the
+Make sure you are using cmake `>= 3.29` and build SlickShot with `$CMAKE_INSTALL_PREFIX` set to the
 installation directory. If this is not done, the translations won't be found when using a custom directory.
 Then, run the following:
 
@@ -553,7 +532,9 @@ cmake --install "$BUILD_DIR"
 
 ### FAQ
 
-<https://flameshot.org/docs/guide/faq/>
+SlickShot does not have a separate FAQ site. Check the
+[issue tracker](https://github.com/khentmoba/slickshot/issues) for known issues
+and answers, and open a new issue if your question is not covered.
 
 ## License
 
@@ -573,9 +554,14 @@ This program will not transfer any information to other networked systems unless
 
 ## Code Signing Policy
 
-For Windows binaries, this program uses free code signing provided by [SignPath.io](https://signpath.io?utm_source=foundation&utm_medium=github&utm_campaign=flameshot), and a certificate by the [SignPath Foundation](https://signpath.org?utm_source=foundation&utm_medium=github&utm_campaign=flameshot).
+Current SlickShot Windows builds are **unsigned**: no code-signing step exists
+in this repository's automation, and signing is not a requirement for releases.
+Windows SmartScreen may therefore show a warning when you run the installer or
+the executable for the first time. You can check the published SHA-256 checksum
+(`*.sha256sum`) to confirm the file matches the release asset.
 
-Code signing is currently a manual process so not every patch release will be signed.
+This may change if signing is added later; until then, do not expect a signed
+binary from these release assets.
 
 ## Contribute
 
@@ -590,8 +576,6 @@ Thanks to those who have shown interest in the early development process:
 - [The members of Sugus GNU/Linux](https://github.com/SUGUS-GNULinux)
 - ismatori
 
-Thanks to sponsors:
-- [Namecheap](https://www.namecheap.com/)
-- [JetBrains](https://www.jetbrains.com/)
-- [SignPath](https://signpath.io/)
-- [addy.io](https://addy.io/)
+The inherited project also acknowledges its past sponsors (Namecheap, JetBrains,
+SignPath and addy.io). SlickShot's Windows builds are unsigned; see
+[Code Signing Policy](#code-signing-policy).

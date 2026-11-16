@@ -62,7 +62,8 @@ ScreenGrabber::PortalStatus ScreenGrabber::freeDesktopPortal(
     auto* connectionInterface = QDBusConnection::sessionBus().interface();
     auto service = QStringLiteral("org.freedesktop.portal.Desktop");
 
-    if (!connectionInterface->isServiceRegistered(service)) {
+    if (!connectionInterface ||
+        !connectionInterface->isServiceRegistered(service)) {
         errorDetail =
           tr("Could not locate the `org.freedesktop.portal.Desktop` service");
         return PortalStatus::Unavailable;
@@ -443,16 +444,22 @@ QRect ScreenGrabber::screenGeometry(QScreen* screen)
 QPixmap ScreenGrabber::grabScreen(QScreen* screen, bool& ok)
 {
     QPixmap p;
-    QRect geometry = screenGeometry(screen);
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     const QList<QScreen*> screens = QGuiApplication::screens();
     int screenIndex = screens.indexOf(screen);
 
     p = grabEntireDesktop(ok, screenIndex);
 #else
+    // QScreen::grabWindow() offsets are relative to this screen, so passing
+    // the logical (possibly negative) global x/y captures the wrong area.
+    // Grab the whole screen instead; no local crop is needed because the
+    // result already covers exactly this screen.
     ok = true;
-    return screen->grabWindow(
-      0, geometry.x(), geometry.y(), geometry.width(), geometry.height());
+    p = screen->grabWindow(0);
+    ok = !p.isNull();
+    if (ok) {
+        p.setDevicePixelRatio(screen->devicePixelRatio());
+    }
 #endif
     return p;
 }
@@ -690,7 +697,7 @@ QPixmap ScreenGrabber::cropToMonitor(const QPixmap& fullScreenshot,
                                      int monitorIndex)
 {
     const QList<QScreen*> screens = QGuiApplication::screens();
-    if (monitorIndex >= screens.size()) {
+    if (monitorIndex < 0 || monitorIndex >= screens.size()) {
         return fullScreenshot;
     }
 

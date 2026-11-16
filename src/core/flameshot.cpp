@@ -431,9 +431,7 @@ Flameshot::Origin Flameshot::origin()
 bool Flameshot::resolveAnyConfigErrors()
 {
     bool resolved = true;
-    ConfigHandler confighandler;
-    if (!confighandler.checkUnrecognizedSettings() ||
-        !confighandler.checkSemantics()) {
+    if (ConfigHandler::hasUnresolvedConfigErrors()) {
         auto* resolver = new ConfigResolver();
         QObject::connect(
           resolver, &ConfigResolver::rejected, [resolver, &resolved]() {
@@ -494,7 +492,8 @@ void Flameshot::exportCapture(const QPixmap& capture,
     int tasks = req.tasks(), mode = req.captureMode();
     QString path = req.path();
 
-    if (tasks & CR::PRINT_GEOMETRY) {
+    // The help text promises geometry output is suppressed when raw is set.
+    if ((tasks & CR::PRINT_GEOMETRY) && !(tasks & CR::PRINT_RAW)) {
         QTextStream(stdout)
           << selection.width() << "x" << selection.height() << "+"
           << selection.x() << "+" << selection.y() << "\n";
@@ -523,7 +522,13 @@ void Flameshot::exportCapture(const QPixmap& capture,
     }
 
     if (tasks & CR::PIN) {
-        FlameshotDaemon::createPin(capture, selection);
+        // The screen path stores the actual cropped selection when a pin is
+        // requested. Fall back to `selection` for modes that do not set one.
+        QRect pinGeometry = req.pinWindowGeometry();
+        if (pinGeometry.isNull()) {
+            pinGeometry = selection;
+        }
+        FlameshotDaemon::createPin(capture, pinGeometry);
         if (mode == CR::SCREEN_MODE || mode == CR::FULLSCREEN_MODE) {
             AbstractLogger::info()
               << QObject::tr("Full screen screenshot pinned to screen");
@@ -543,11 +548,11 @@ void Flameshot::exportCapture(const QPixmap& capture,
         widget->show();
         widget->activateWindow();
         // NOTE: lambda can't capture 'this' because it might be destroyed later
-        CR::ExportTask tasks = tasks;
+        CR::ExportTask uploadTasks = static_cast<CR::ExportTask>(tasks);
         QObject::connect(
           widget, &ImgUploaderBase::uploadOk, [=, this](const QUrl& url) {
               if (ConfigHandler().copyURLAfterUpload()) {
-                  if (!(tasks & CR::COPY)) {
+                  if (!(uploadTasks & CR::COPY)) {
                       FlameshotDaemon::copyToClipboard(
                         url.toString(), tr("URL copied to clipboard."));
                   }

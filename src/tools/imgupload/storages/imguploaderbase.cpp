@@ -40,7 +40,13 @@ ImgUploaderBase::ImgUploaderBase(const QPixmap& capture, QWidget* parent)
 
     QRect position = frameGeometry();
     QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
-    position.moveCenter(screen->availableGeometry().center());
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    // screenAt() and even primaryScreen() can return nullptr (e.g. with the
+    // offscreen platform), so fall back to a default rect rather than crash.
+    const QRect available = screen ? screen->availableGeometry() : QRect();
+    position.moveCenter(available.center());
     move(position.topLeft());
 
     m_spinner = new LoadSpinner(this);

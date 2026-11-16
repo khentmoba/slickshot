@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QFont>
+#include <QFontMetrics>
 #include <QImage>
 #include <QPixmap>
 #include <QWidget>
@@ -34,7 +36,18 @@ private:
     QColor m_borderColor;
     QPixmap m_screenshot;
 
-    QImage samplePatch(const QPoint& centerPx, QColor& centerColor) const;
+    // Cached readout font/metrics, sampled patch and color label, reused
+    // across mouse moves instead of being rebuilt on every paint.
+    QFont m_readoutFont;
+    QFontMetrics m_readoutMetrics;
+    QPoint m_lastCenterPx;
+    QImage m_cachedPatch;
+    QColor m_cachedCenterColor;
+    QString m_cachedLabel;
+    QColor m_cachedLabelColor;
+    bool m_patchValid = false;
+
+    QImage samplePatch(const QPoint& centerPx, QColor& centerColor);
     void drawColorReadout(QPainter& painter,
                           const QPointF& drawPos,
                           const QColor& pixelColor);

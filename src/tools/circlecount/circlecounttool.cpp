@@ -152,27 +152,40 @@ void CircleCountTool::process(QPainter& painter, const QPixmap& pixmap)
                            points().first.y() - bubble_size / 2,
                            bubble_size,
                            bubble_size);
+    // Fitting the font takes repeated boundingRect() calls. Its result depends
+    // only on the count, the bubble size and the font family, so cache it.
+    int fontSize;
+    if (m_cachedFontSize > 0 && m_cachedCount == count() &&
+        m_cachedBubbleSize == bubble_size &&
+        m_cachedFontFamily == orig_font.family()) {
+        fontSize = m_cachedFontSize;
+    } else {
+        const QString text = QString::number(count());
+        QFont f = orig_font;
+        fontSize = bubble_size;
+        f.setPixelSize(fontSize);
+        f.setBold(true);
+        painter.setFont(f);
+        QRect bRect = painter.boundingRect(textRect, Qt::AlignCenter, text);
+        while (bRect.width() > textRect.width()) {
+            --fontSize;
+            if (fontSize == 0) {
+                break;
+            }
+            f.setPixelSize(fontSize);
+            painter.setFont(f);
+            bRect = painter.boundingRect(textRect, Qt::AlignCenter, text);
+        }
+        m_cachedFontSize = fontSize;
+        m_cachedCount = count();
+        m_cachedBubbleSize = bubble_size;
+        m_cachedFontFamily = orig_font.family();
+    }
+
     auto new_font = orig_font;
-    auto fontSize = bubble_size;
     new_font.setPixelSize(fontSize);
     new_font.setBold(true);
     painter.setFont(new_font);
-
-    // Draw bounding circle
-    QRect bRect =
-      painter.boundingRect(textRect, Qt::AlignCenter, QString::number(count()));
-
-    // Calculate font size
-    while (bRect.width() > textRect.width()) {
-        fontSize--;
-        if (fontSize == 0) {
-            break;
-        }
-        new_font.setPixelSize(fontSize);
-        painter.setFont(new_font);
-        bRect = painter.boundingRect(
-          textRect, Qt::AlignCenter, QString::number(count()));
-    }
 
     // Draw text
     painter.setPen(contrastColor);

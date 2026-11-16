@@ -174,7 +174,13 @@ void FlameshotDaemon::copyToClipboard(const QPixmap& capture)
   (defined(Q_OS_MACOS) || defined(Q_OS_WIN))
     auto kdsa = KDSingleApplication(QStringLiteral("org.flameshot.Flameshot"));
     stream << QStringLiteral("attachScreenshotToClipboard") << capture;
-    kdsa.sendMessage(data);
+    if (kdsa.sendMessage(data)) {
+        return;
+    }
+    // Windows CLI subcommands never start the daemon, so there may be no
+    // receiver for the message. The Windows clipboard survives this process,
+    // so set it here instead of silently dropping the capture.
+    saveToClipboard(capture);
 #else
     stream << capture;
     QDBusMessage m =
@@ -199,7 +205,14 @@ void FlameshotDaemon::copyToClipboard(const QString& text,
     QByteArray data;
     QDataStream stream(&data, QIODevice::WriteOnly);
     stream << QStringLiteral("attachTextToClipboard") << text << notification;
-    kdsa.sendMessage(data);
+    if (kdsa.sendMessage(data)) {
+        return;
+    }
+    // No resident daemon to receive the message - set the clipboard locally.
+    if (!notification.isEmpty()) {
+        AbstractLogger::info() << notification;
+    }
+    QApplication::clipboard()->setText(text);
 #else
     auto m = createMethodCall(QStringLiteral("attachTextToClipboard"));
     m << text << notification;

@@ -204,17 +204,21 @@ bool CommandLineParser::parse(const QStringList& args)
         }
         return ok;
     }
-    // check  help option
-    ok = processIfOptionIsHelp(args, it, actualNode);
-    // process the other args
-    for (; it != args.cend() && ok; ++it) {
+    // Process the args. Check for help before every token so that
+    // `flameshot gui -p /tmp --help` prints help instead of an error.
+    for (; it != args.cend() && ok;) {
+        ok = processIfOptionIsHelp(args, it, actualNode);
+        // A trailing help option advances the iterator to the end.
+        if (!ok || it == args.cend()) {
+            break;
+        }
         const QString& val = *it;
         if (val.startsWith(QLatin1String("-"))) {
             ok = processOptions(args, it, actualNode);
-
         } else {
             ok = processArgs(args, it, actualNode);
         }
+        ++it;
     }
     if (!ok && !m_generalErrorMessage.isEmpty()) {
         err.enableMessageHeader(false);

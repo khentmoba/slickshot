@@ -6,9 +6,11 @@
 
 #include <QColor>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QImageWriter>
 #include <QKeySequence>
 #include <QRegularExpression>
+#include <QScreen>
 #include <QStandardPaths>
 #include <QVariant>
 #include <memory>
@@ -382,7 +384,9 @@ bool ButtonList::normalizeButtons(QList<int>& buttons)
       toIntList(CaptureToolButton::getIterableButtonTypes());
 
     bool hasChanged = false;
-    for (int i = 0; i < buttons.size(); i++) {
+    // Iterate backwards so removing an element does not shift the next one
+    // past the index we are about to inspect.
+    for (int i = buttons.size() - 1; i >= 0; --i) {
         if (!listTypesInt.contains(buttons.at(i))) {
             buttons.removeAt(i);
             hasChanged = true;
@@ -520,8 +524,46 @@ QString SaveFileExtension::expected()
 
 // REGION
 
+namespace {
+
+bool isAllRegion(const QString& str)
+{
+    return str.compare(QLatin1String("all"), Qt::CaseInsensitive) == 0;
+}
+
+bool screenRegionIndex(const QString& str, int& index)
+{
+    static const QRegularExpression screenRegex(
+      QStringLiteral("^screen(\\d+)$"),
+      QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch match = screenRegex.match(str);
+    if (!match.hasMatch()) {
+        return false;
+    }
+    bool ok = false;
+    index = match.captured(1).toInt(&ok);
+    return ok;
+}
+
+} // namespace
+
 bool Region::check(const QVariant& val)
 {
+    const QString str = val.toString().trimmed();
+    // Named regions are resolved in process(), which needs a QGuiApplication.
+    // At CLI parse time only a QCoreApplication exists, so validate them here
+    // without querying the (not yet available) screen list.
+    if (isAllRegion(str)) {
+        return true;
+    }
+    int index = -1;
+    if (screenRegionIndex(str, index)) {
+        // At CLI parse time there is only a QCoreApplication, so the screen
+        // list does not exist yet. Validate the index wherever it does.
+        const auto* app =
+          qobject_cast<const QGuiApplication*>(QCoreApplication::instance());
+        return !app || (index >= 0 && index < app->screens().size());
+    }
     QVariant region = process(val);
     return region.isValid();
 }
@@ -543,7 +585,27 @@ QVariant Region::process(const QVariant& val)
         tempApp = std::make_unique<QApplication>(*argc, argv.get());
     }
 
-    QString str = val.toString();
+    QString str = val.toString().trimmed();
+
+    // Named regions advertised on the CLI are resolved before the numeric
+    // WxH+X+Y parsing, which would otherwise always reject them.
+    if (isAllRegion(str)) {
+        QRect desktopRect;
+        const QList<QScreen*> screens = QGuiApplication::screens();
+        for (QScreen* screen : screens) {
+            desktopRect = desktopRect.united(screen->geometry());
+        }
+        return desktopRect;
+    }
+
+    int index = -1;
+    if (screenRegionIndex(str, index)) {
+        const QList<QScreen*> screens = QGuiApplication::screens();
+        if (index >= 0 && index < screens.size()) {
+            return screens.at(index)->geometry();
+        }
+        return {};
+    }
 
     static const QRegularExpression regex(
       "(-?\\d+)"      // number (any sign)

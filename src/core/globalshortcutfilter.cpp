@@ -6,6 +6,7 @@
 #include "utils/confighandler.h"
 
 #include <QApplication>
+#include <QElapsedTimer>
 
 #if defined(Q_OS_WIN)
 #ifndef NOMINMAX
@@ -30,6 +31,33 @@ LRESULT CALLBACK GlobalShortcutFilter::lowLevelKeyboardProc(int nCode,
             return CallNextHookEx(s_keyboardHook, nCode, wParam, lParam);
         }
 
+        // A matching WM_KEYUP can be missed (e.g. when triggering a capture
+        // changes focus). Expire stale "consumed" flags after a bounded time
+        // so the next press is still able to trigger a capture.
+        static QElapsedTimer winShiftConsumedAt;
+        static QElapsedTimer prntScrConsumedAt;
+        constexpr qint64 consumedTimeoutMs = 5000;
+        if (s_winShiftSConsumed &&
+            winShiftConsumedAt.hasExpired(consumedTimeoutMs)) {
+            s_winShiftSConsumed = false;
+        }
+        if (s_prntScrConsumed &&
+            prntScrConsumedAt.hasExpired(consumedTimeoutMs)) {
+            s_prntScrConsumed = false;
+        }
+
+        // Releasing one of the combo modifiers ends the gesture too.
+        if ((wParam == WM_KEYUP || wParam == WM_SYSKEYUP) &&
+            (pKey->vkCode == VK_SHIFT || pKey->vkCode == VK_LSHIFT ||
+             pKey->vkCode == VK_RSHIFT || pKey->vkCode == VK_LWIN ||
+             pKey->vkCode == VK_RWIN || pKey->vkCode == VK_CONTROL ||
+             pKey->vkCode == VK_LCONTROL || pKey->vkCode == VK_RCONTROL ||
+             pKey->vkCode == VK_MENU || pKey->vkCode == VK_LMENU ||
+             pKey->vkCode == VK_RMENU)) {
+            s_winShiftSConsumed = false;
+            s_prntScrConsumed = false;
+        }
+
         if (s_replaceSnippingTool) {
             bool winDown = (GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 ||
                            (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0;
@@ -46,6 +74,7 @@ LRESULT CALLBACK GlobalShortcutFilter::lowLevelKeyboardProc(int nCode,
                           s_winShiftSConsumed &&
                           ((GetAsyncKeyState('S') & 0x8000) != 0);
                         s_winShiftSConsumed = true;
+                        winShiftConsumedAt.start();
                         if (!isRepeat) {
                             // Suppress Start Menu without triggering Ctrl+Shift
                             // keyboard layout switches
@@ -88,6 +117,7 @@ LRESULT CALLBACK GlobalShortcutFilter::lowLevelKeyboardProc(int nCode,
                           s_prntScrConsumed &&
                           ((GetAsyncKeyState(VK_SNAPSHOT) & 0x8000) != 0);
                         s_prntScrConsumed = true;
+                        prntScrConsumedAt.start();
                         if (!isRepeat) {
                             if (shiftDown) {
 #ifdef ENABLE_IMGUR
@@ -194,6 +224,11 @@ bool GlobalShortcutFilter::nativeEventFilter(const QByteArray& eventType,
 
 #if defined(Q_OS_WIN)
     MSG* msg = static_cast<MSG*>(message);
+    if (msg->message == WM_KILLFOCUS) {
+        // Focus loss means a matching keyup may never arrive.
+        s_winShiftSConsumed = false;
+        s_prntScrConsumed = false;
+    }
     if (msg->message == WM_HOTKEY) {
         const quint32 keycode = HIWORD(msg->lParam);
         const quint32 modifiers = LOWORD(msg->lParam);

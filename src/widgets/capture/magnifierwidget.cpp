@@ -18,6 +18,13 @@ MagnifierWidget::MagnifierWidget(const QPixmap& p,
   , m_color(c)
   , m_borderColor(c)
   , m_screenshot(p)
+  , m_readoutFont([] {
+      QFont f = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+      f.setPointSize(9);
+      f.setBold(true);
+      return f;
+  }())
+  , m_readoutMetrics(m_readoutFont)
 {
     if (parent) {
         setFixedSize(parent->width(), parent->height());
@@ -41,53 +48,64 @@ QPoint MagnifierWidget::physicalPixelAt(const QPoint& logicalPos,
     return { px, py };
 }
 
-QImage MagnifierWidget::samplePatch(const QPoint& centerPx,
-                                    QColor& centerColor) const
+QImage MagnifierWidget::samplePatch(const QPoint& centerPx, QColor& centerColor)
 {
-    QImage patch(m_pixels, m_pixels, QImage::Format_ARGB32);
-    patch.fill(Qt::black);
-    centerColor = Qt::black;
-    if (m_screenshot.isNull()) {
-        return patch;
+    // The screenshot is fixed for the lifetime of this widget. Reuse the last
+    // patch (and its center color) while the physical center pixel is
+    // unchanged.
+    if (m_patchValid && m_lastCenterPx == centerPx) {
+        centerColor = m_cachedCenterColor;
+        return m_cachedPatch;
     }
 
-    const int topLeftX = centerPx.x() - m_magPixels;
-    const int topLeftY = centerPx.y() - m_magPixels;
-    const QRect srcRect = QRect(topLeftX, topLeftY, m_pixels, m_pixels)
-                            .intersected(m_screenshot.rect());
-    if (!srcRect.isEmpty()) {
-        QImage subImg = m_screenshot.copy(srcRect).toImage();
-        subImg.setDevicePixelRatio(1.0);
-        QPainter patchPainter(&patch);
-        patchPainter.drawImage(
-          srcRect.x() - topLeftX, srcRect.y() - topLeftY, subImg);
+    QImage patch(m_pixels, m_pixels, QImage::Format_ARGB32);
+    patch.fill(Qt::black);
+    m_cachedCenterColor = Qt::black;
+    if (!m_screenshot.isNull()) {
+        const int topLeftX = centerPx.x() - m_magPixels;
+        const int topLeftY = centerPx.y() - m_magPixels;
+        const QRect srcRect = QRect(topLeftX, topLeftY, m_pixels, m_pixels)
+                                .intersected(m_screenshot.rect());
+        if (!srcRect.isEmpty()) {
+            QImage subImg = m_screenshot.copy(srcRect).toImage();
+            subImg.setDevicePixelRatio(1.0);
+            QPainter patchPainter(&patch);
+            patchPainter.drawImage(
+              srcRect.x() - topLeftX, srcRect.y() - topLeftY, subImg);
+        }
+        m_cachedCenterColor = patch.pixelColor(m_magPixels, m_magPixels);
     }
-    centerColor = patch.pixelColor(m_magPixels, m_magPixels);
-    return patch;
+    centerColor = m_cachedCenterColor;
+    m_cachedPatch = patch;
+    m_lastCenterPx = centerPx;
+    m_patchValid = true;
+    return m_cachedPatch;
 }
 
 void MagnifierWidget::drawColorReadout(QPainter& painter,
                                        const QPointF& drawPos,
                                        const QColor& pixelColor)
 {
-    const QString label = QStringLiteral("%1  %2,%3,%4")
-                            .arg(pixelColor.name(QColor::HexRgb).toUpper())
-                            .arg(pixelColor.red())
-                            .arg(pixelColor.green())
-                            .arg(pixelColor.blue());
+    // The hex/RGB label only changes with the sampled color.
+    if (m_cachedLabel.isEmpty() || m_cachedLabelColor != pixelColor) {
+        m_cachedLabel = QStringLiteral("%1  %2,%3,%4")
+                          .arg(pixelColor.name(QColor::HexRgb).toUpper())
+                          .arg(pixelColor.red())
+                          .arg(pixelColor.green())
+                          .arg(pixelColor.blue());
+        m_cachedLabelColor = pixelColor;
+    }
+    const QString& label = m_cachedLabel;
 
-    QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    font.setPointSize(9);
-    font.setBold(true);
-    painter.setFont(font);
+    painter.setFont(m_readoutFont);
 
-    const QFontMetrics fm(font);
     const int swatchSize = 10;
     const int padX = 8;
     const int padY = 5;
     const int gap = 6;
-    const int pillW = padX * 2 + swatchSize + gap + fm.horizontalAdvance(label);
-    const int pillH = qMax(swatchSize, fm.height()) + padY * 2;
+    const int pillW =
+      padX * 2 + swatchSize + gap + m_readoutMetrics.horizontalAdvance(label);
+    const int pillH = qMax(swatchSize, m_readoutMetrics.height()) + padY * 2;
 
     const qreal loupeHalf = (m_pixels * magZoom) / 2.0;
     qreal pillX = drawPos.x() - pillW / 2.0;

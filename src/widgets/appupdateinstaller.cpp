@@ -19,7 +19,11 @@ constexpr int kProgressSteps = 1000;
 
 void AppUpdateInstaller::openUpdate(const AppUpdateInfo& info)
 {
-    if (!AppUpdate::canInstallInPlace(info)) {
+    // Even if releaseInfo() already filtered these, re-check at the download
+    // boundary so a caller can never make us fetch untrusted URLs.
+    if (!AppUpdate::isTrustedAssetUrl(info.installerUrl) ||
+        !AppUpdate::isTrustedAssetUrl(info.checksumUrl) ||
+        !AppUpdate::canInstallInPlace(info)) {
         if (!info.pageUrl.isEmpty()) {
             QDesktopServices::openUrl(QUrl(info.pageUrl));
         }
@@ -67,6 +71,11 @@ void AppUpdateInstaller::start()
 
 void AppUpdateInstaller::downloadChecksum()
 {
+    if (!AppUpdate::isTrustedAssetUrl(m_info.checksumUrl)) {
+        fail(tr("The update checksum URL is not trusted. The update was not "
+                "installed."));
+        return;
+    }
     QNetworkReply* reply = get(QUrl(m_info.checksumUrl));
     connect(reply, &QNetworkReply::finished, this, [this, reply] {
         m_reply = nullptr;
@@ -92,6 +101,11 @@ void AppUpdateInstaller::downloadChecksum()
 
 void AppUpdateInstaller::downloadInstaller()
 {
+    if (!AppUpdate::isTrustedAssetUrl(m_info.installerUrl)) {
+        fail(tr("The update installer URL is not trusted. The update was not "
+                "installed."));
+        return;
+    }
     const QString dirPath =
       QStandardPaths::writableLocation(QStandardPaths::TempLocation) +
       QStringLiteral("/SlickShot-update");

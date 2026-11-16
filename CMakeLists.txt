@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.22)
 # cmake_policy(SET CMP0076 OLD)
 
+# CMP0169 (CMake 3.30+) deprecates FetchContent_Populate() with declared
+# details, which CMake 4 rejects. Use FetchContent_MakeAvailable() when the
+# policy exists; older CMake keeps the same behavior without the policy.
+if(POLICY CMP0169)
+  cmake_policy(SET CMP0169 NEW)
+endif()
+
 set(FLAMESHOT_VERSION 0.1.3)
 
 # SlickShot (standalone fork of Flameshot)
@@ -44,15 +51,18 @@ else()
     GIT_REPOSITORY https://gitlab.com/mattbas/Qt-Color-Widgets.git
     GIT_TAG 5d52e907e50dc88cf969b41cea44665ff6c475b1
   )
-  #Workaround for duplicate GUID in windows WIX installer
+  FetchContent_MakeAvailable(qtColorWidgets)
+
+  # Workaround for duplicate GUID in the Windows WIX installer. On Windows the
+  # vendored dependency used to be added with add_subdirectory(...
+  # EXCLUDE_FROM_ALL) so it would not contribute install rules/GUIDs to the
+  # package. MakeAvailable adds the subdirectory itself, so restore that effect
+  # after population instead of calling the deprecated FetchContent_Populate().
   if(WIN32)
-    FetchContent_GetProperties(qtColorWidgets)
-    if(NOT qtcolorwidgets_POPULATED)
-      FetchContent_Populate(qtColorWidgets)
-      add_subdirectory(${qtcolorwidgets_SOURCE_DIR} ${qtcolorwidgets_BINARY_DIR} EXCLUDE_FROM_ALL)
+    set_property(DIRECTORY "${qtcolorwidgets_SOURCE_DIR}" PROPERTY EXCLUDE_FROM_ALL TRUE)
+    if(TARGET QtColorWidgets)
+      set_target_properties(QtColorWidgets PROPERTIES EXCLUDE_FROM_ALL TRUE)
     endif()
-  else()
-    FetchContent_MakeAvailable(qtColorWidgets)
   endif()
 endif()
 

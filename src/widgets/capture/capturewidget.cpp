@@ -116,6 +116,12 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
     m_opacity = m_config.contrastOpacity();
     m_uiColor = m_config.uiColor();
     m_contrastUiColor = m_config.contrastUiColor();
+    // Snapshot these once: the activation path already validated the config
+    // and the file watcher updates the error state; reading them on every
+    // mouse move / paint is needless work.
+    m_showSelectionGeometry = m_config.showSelectionGeometry();
+    m_showSelectionGeometryHideTime = m_config.showSelectionGeometryHideTime();
+    m_copyOnDoubleClick = m_config.copyOnDoubleClick();
     setMouseTracking(true);
     initContext(fullScreen, req);
 
@@ -279,10 +285,12 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
         onToolSizeChanged(m_context.toolSize);
     });
 
-    m_config.checkAndHandleError();
-    if (m_config.hasError()) {
-        m_configError = true;
-    }
+    // Flameshot::resolveAnyConfigErrors() already validated on the activation
+    // path and the config file watcher revalidates on change, so running the
+    // checks again here is redundant. Mirror the current state and keep the
+    // (constant) error message cached instead.
+    m_configError = m_config.hasError();
+    m_configErrorMsg = m_config.errorMessage();
     connect(
       ConfigHandler::getInstance(), &ConfigHandler::error, this, [=, this]() {
           m_configError = true;
@@ -309,7 +317,8 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
         OverlayMessage::push(m_helpMessage);
     }
 
-    initQuitPrompt();
+    // The quit prompt is created lazily in promptQuit(); most captures never
+    // need it.
 
     updateCursor();
 }
@@ -487,7 +496,7 @@ void CaptureWidget::showxywh()
 {
     m_xywhDisplay = true;
     update();
-    int timeout = m_config.showSelectionGeometryHideTime();
+    int timeout = m_showSelectionGeometryHideTime;
     if (timeout != 0) {
         m_xywhTimer.start(timeout);
     }
@@ -585,6 +594,10 @@ void CaptureWidget::initQuitPrompt()
 
 bool CaptureWidget::promptQuit()
 {
+    // Create and position the prompt only when it is actually needed.
+    if (!m_quitPrompt) {
+        initQuitPrompt();
+    }
     return m_quitPrompt->exec() == QMessageBox::Yes;
 }
 
@@ -611,8 +624,8 @@ void CaptureWidget::deleteToolWidgetOrClose()
     } else {
         // close CaptureWidget
         if (m_config.showQuitPrompt()) {
-            // need to show prompt
-            if (m_quitPrompt->isHidden() && promptQuit()) {
+            // need to show prompt (created lazily by promptQuit())
+            if (promptQuit()) {
                 close();
             }
         } else {
@@ -704,7 +717,7 @@ void CaptureWidget::paintEvent(QPaintEvent* paintEvent)
         return;
     }
     GeneralConf::xywh_position position =
-      static_cast<GeneralConf::xywh_position>(m_config.showSelectionGeometry());
+      static_cast<GeneralConf::xywh_position>(m_showSelectionGeometry);
     /* QPainter::save and restore is somewhat costly so we try to guess
        if we need to do it here. What that means is that if you add
        anything to the paintEvent and want to save/restore you should
@@ -803,7 +816,7 @@ void CaptureWidget::paintEvent(QPaintEvent* paintEvent)
              "work until you click somewhere."),
           &painter);
     } else if (m_configError) {
-        drawErrorMessage(ConfigHandler().errorMessage(), &painter);
+        drawErrorMessage(m_configErrorMsg, &painter);
     } else if (m_configErrorResolved) {
         drawErrorMessage(tr("Configuration error resolved. Launch SlickShot "
                             "again to apply it."),
@@ -960,8 +973,7 @@ void CaptureWidget::mouseDoubleClickEvent(QMouseEvent* event)
             }
         }
     } else if (m_selection->geometry().contains(event->pos())) {
-        if ((event->button() == Qt::LeftButton) &&
-            (m_config.copyOnDoubleClick())) {
+        if ((event->button() == Qt::LeftButton) && m_copyOnDoubleClick) {
             CopyTool copyTool;
             connect(&copyTool,
                     &CopyTool::requestAction,
@@ -1583,8 +1595,18 @@ void CaptureWidget::onToolSizeChanged(int t)
         updateTool(toolItem);
     }
 
-    // Force a repaint to prevent artifacting
-    this->repaint();
+    // Repaint only the regions that can show artifacts after a size change:
+    // the mouse preview (updateTool also clears its previous rect), the object
+    // currently being drawn and the selected object. No full synchronous
+    // repaint is needed.
+    updateTool(activeButtonTool());
+    if (m_activeTool) {
+        update(paddedUpdateRect(m_activeTool->boundingRect()));
+    }
+    auto activeObject = activeToolObject();
+    if (activeObject) {
+        update(paddedUpdateRect(activeObject->boundingRect()));
+    }
 }
 
 void CaptureWidget::setDrawColor(const QColor& c)
@@ -1840,7 +1862,7 @@ void CaptureWidget::deleteCurrentTool()
 
 void CaptureWidget::updateSizeIndicator()
 {
-    if (m_config.showSelectionGeometry()) {
+    if (m_showSelectionGeometry) {
         showxywh();
     }
     if (m_sizeIndButton) {
@@ -1889,24 +1911,35 @@ void CaptureWidget::updateTool(CaptureTool* tool)
         return;
     }
 
-    static QRect oldPreviewRect, oldToolObjectRect;
+    // A small fixed margin suffices now that the old rectangles are included
+    // explicitly; the previous code grew the preview to three times its size.
+    constexpr int previewMargin = 20;
+    const QRect previewRect = tool->mousePreviewRect(m_context).adjusted(
+      -previewMargin, -previewMargin, previewMargin, previewMargin);
+    const QRect toolObjectRect = paddedUpdateRect(tool->boundingRect());
 
-    QRect previewRect(tool->mousePreviewRect(m_context));
-    previewRect += QMargins(previewRect.width(),
-                            previewRect.height(),
-                            previewRect.width(),
-                            previewRect.height());
+    QRegion dirty;
+    if (!previewRect.isEmpty()) {
+        dirty += previewRect;
+    }
+    if (!toolObjectRect.isEmpty()) {
+        dirty += toolObjectRect;
+    }
+    // Clear the previous positions without repainting them twice when they
+    // coincide with the current ones.
+    if (!m_lastPreviewRect.isEmpty() && m_lastPreviewRect != previewRect) {
+        dirty += m_lastPreviewRect;
+    }
+    if (!m_lastToolObjectRect.isEmpty() &&
+        m_lastToolObjectRect != toolObjectRect) {
+        dirty += m_lastToolObjectRect;
+    }
+    if (!dirty.isEmpty()) {
+        update(dirty);
+    }
 
-    QRect toolObjectRect = paddedUpdateRect(tool->boundingRect());
-
-    // old rects are united with current rects to handle sudden mouse movement
-    update(previewRect);
-    update(toolObjectRect);
-    update(oldPreviewRect);
-    update(oldToolObjectRect);
-
-    oldPreviewRect = previewRect;
-    oldToolObjectRect = toolObjectRect;
+    m_lastPreviewRect = previewRect;
+    m_lastToolObjectRect = toolObjectRect;
 }
 
 void CaptureWidget::updateLayersPanel()
@@ -1950,6 +1983,19 @@ void CaptureWidget::invalidateDragBase()
 {
     m_dragBase = QPixmap();
     m_dragBaseLayer = -1;
+}
+
+void CaptureWidget::invalidateToolObjectsRegion()
+{
+    // Queue a repaint of the current objects' regions without recompositing.
+    // Used before an undo/redo so that regions occupied only by the old object
+    // list are cleared, while the single recomposite in setCaptureToolObjects
+    // produces the final screenshot.
+    for (const auto& toolItem : m_captureToolObjects.captureToolObjects()) {
+        if (!toolItem.isNull()) {
+            update(paddedUpdateRect(toolItem->boundingRect()));
+        }
+    }
 }
 
 void CaptureWidget::redrawFromLayer(int layer)
@@ -2322,11 +2368,13 @@ void CaptureWidget::undo()
         m_panel->setActiveLayer(-1);
     }
 
-    // drawToolsData is called twice to update both previous and new regions
-    // FIXME this is a temporary workaround
-    drawToolsData();
+    // Mark the regions of the outgoing object list dirty, then let the single
+    // recomposite in setCaptureToolObjects() (invoked by the undo command)
+    // produce the final screenshot. Recompositing before and after the undo
+    // was redundant, and the outgoing regions are covered by the invalidation
+    // above.
+    invalidateToolObjectsRegion();
     m_undoStack.undo();
-    drawToolsData();
     updateLayersPanel();
 
     restoreCircleCountState();
@@ -2334,11 +2382,8 @@ void CaptureWidget::undo()
 
 void CaptureWidget::redo()
 {
-    // drawToolsData is called twice to update both previous and new regions
-    // FIXME this is a temporary workaround
-    drawToolsData();
+    invalidateToolObjectsRegion();
     m_undoStack.redo();
-    drawToolsData();
     update();
     updateLayersPanel();
 

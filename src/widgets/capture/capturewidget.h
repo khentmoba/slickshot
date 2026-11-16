@@ -179,6 +179,7 @@ private:
     void updateMagnifierArea();
     void redrawFromLayer(int layer);
     void invalidateDragBase();
+    void invalidateToolObjectsRegion();
     void drawObjectSelection();
 
     void processPixmapWithTool(QPixmap* pixmap, CaptureTool* tool);
@@ -213,6 +214,15 @@ private:
     bool m_adjustmentButtonPressed;
     bool m_configError;
     bool m_configErrorResolved;
+    // Cached once: errorMessage() is constant and re-reading the config on
+    // every paint (or constructing a temporary ConfigHandler) is unnecessary.
+    QString m_configErrorMsg;
+
+    // Snapshotted once in the constructor instead of re-read on every
+    // selection move / paint.
+    int m_showSelectionGeometry{ 0 };
+    int m_showSelectionGeometryHideTime{ 0 };
+    bool m_copyOnDoubleClick{ false };
 
 #if !defined(DISABLE_UPDATE_CHECKER)
     UpdateNotificationWidget* m_updateNotificationWidget;
@@ -274,6 +284,11 @@ private:
 
     // Area the magnifier was last drawn in, so its old position is cleared
     QRect m_magnifierArea;
+
+    // Rectangles last covered by updateTool(), so the previous positions can
+    // be cleared without a full repaint.
+    QRect m_lastPreviewRect;
+    QRect m_lastToolObjectRect;
 
     bool m_clipboardWorkaroundDone{ false };
 };
