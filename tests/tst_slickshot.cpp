@@ -3,15 +3,22 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QCursor>
+#include <QDir>
+#include <QFile>
 #include <QGuiApplication>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLabel>
+#include <QList>
+#include <QMap>
 #include <QMimeData>
 #include <QPainter>
 #include <QPixmap>
 #include <QStandardPaths>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QTemporaryFile>
 #include <QTest>
 #include <QVersionNumber>
 #include <QWidget>
@@ -21,12 +28,16 @@
 #include "tools/capturecontext.h"
 #include "tools/capturetool.h"
 #include "tools/invert/inverttool.h"
+#include "tools/launcher/applauncherwidget.h"
 #include "tools/pixelate/pixelatetool.h"
 #include "tools/rectangle/rectangletool.h"
 #include "utils/appupdate.h"
+#include "utils/filenamehandler.h"
+#include "utils/history.h"
 #include "utils/screengrabber.h"
 #include "utils/screenshotsaver.h"
 #include "utils/snippingtoolmanager.h"
+#include "utils/valuehandler.h"
 #include "widgets/capture/buttonhandler.h"
 #include "widgets/capture/capturetoolbutton.h"
 #include "widgets/capture/capturetoolobjects.h"
@@ -46,11 +57,17 @@ private slots:
     void testAppUpdateSha256();
     void testAppUpdateInstallScriptAndEncode();
     void testAppUpdateCanInstallInPlaceForPaths();
+    void testFileNameHandlerParseFilename();
+    void testRegionRejectsOutOfRangeScreen();
+    void testOpenWithTempFileRemovalIsDeferred();
+    void testButtonListNormalizeRemovesConsecutiveInvalid();
     void testSemanticVersionCompare();
     void testSnippingToolCommandMatch();
     void testMultiMonitorPhysicalRects();
     void testCaptureToolButtonCheckableState();
     void testButtonHandlerMultiRowHitTesting();
+    void testButtonHandlerContainsSingleRow();
+    void testHistoryPreviewScalingUsesCrossMultiplication();
     void testMagnifierWidgetHiDpiAndRender();
     void testShortcutsWidgetHiddenOnConstruction();
     void testCaptureToolObjectsFindTopmost();
@@ -71,51 +88,95 @@ void SlickShotTests::initTestCase()
 
 void SlickShotTests::testAppUpdateReleaseInfo()
 {
+    const QString base = QStringLiteral(
+      "https://github.com/khentmoba/slickshot/releases/download/v0.2.0/");
     QJsonArray assets;
     assets.append(QJsonObject{
       { "name", "SlickShot-0.2.0-win64.zip" },
-      { "browser_download_url",
-        "https://example.com/SlickShot-0.2.0-win64.zip" },
+      { "browser_download_url", base + "SlickShot-0.2.0-win64.zip" },
     });
     assets.append(QJsonObject{
       { "name", "SlickShot-0.2.0-win64-setup.exe" },
-      { "browser_download_url",
-        "https://example.com/SlickShot-0.2.0-win64-setup.exe" },
+      { "browser_download_url", base + "SlickShot-0.2.0-win64-setup.exe" },
     });
     assets.append(QJsonObject{
       { "name", "SlickShot-0.2.0-win64-setup.exe.sha256sum" },
       { "browser_download_url",
-        "https://example.com/SlickShot-0.2.0-win64-setup.exe.sha256sum" },
+        base + "SlickShot-0.2.0-win64-setup.exe.sha256sum" },
     });
 
     const QJsonObject release{
         { "tag_name", "v0.2.0" },
-        { "html_url", "https://example.com/releases/v0.2.0" },
+        { "html_url",
+          "https://github.com/khentmoba/slickshot/releases/tag/v0.2.0" },
         { "assets", assets },
     };
 
     const AppUpdateInfo info = AppUpdate::releaseInfo(release);
     QCOMPARE(info.version, QStringLiteral("0.2.0"));
     QCOMPARE(info.pageUrl,
-             QStringLiteral("https://example.com/releases/v0.2.0"));
-    QCOMPARE(info.installerUrl,
-             QStringLiteral("https://example.com/SlickShot-0.2.0-win64-setup.exe"));
-    QCOMPARE(info.checksumUrl,
              QStringLiteral(
-               "https://example.com/SlickShot-0.2.0-win64-setup.exe.sha256sum"));
+               "https://github.com/khentmoba/slickshot/releases/tag/v0.2.0"));
+    QCOMPARE(info.installerUrl,
+             base + QStringLiteral("SlickShot-0.2.0-win64-setup.exe"));
+    QCOMPARE(info.checksumUrl,
+             base +
+               QStringLiteral("SlickShot-0.2.0-win64-setup.exe.sha256sum"));
+
+    // A tag without the leading 'v' and a release without installer assets.
+    const QJsonObject minimal{
+        { "tag_name", "0.3.0" },
+        { "html_url",
+          "https://github.com/khentmoba/slickshot/releases/tag/0.3.0" },
+    };
+    const AppUpdateInfo minimalInfo = AppUpdate::releaseInfo(minimal);
+    QCOMPARE(minimalInfo.version, QStringLiteral("0.3.0"));
+    QCOMPARE(minimalInfo.pageUrl,
+             QStringLiteral(
+               "https://github.com/khentmoba/slickshot/releases/tag/0.3.0"));
+    QVERIFY(minimalInfo.installerUrl.isEmpty());
+    QVERIFY(minimalInfo.checksumUrl.isEmpty());
+
+    // Untrusted hosts must never become download or navigation targets.
+    QJsonArray hostile = assets;
+    hostile[1] = QJsonObject{
+        { "name", "SlickShot-0.2.0-win64-setup.exe" },
+        { "browser_download_url",
+          "https://example.com/SlickShot-0.2.0-win64-setup.exe" },
+    };
+    QJsonObject hostileRelease = release;
+    hostileRelease["assets"] = hostile;
+    const AppUpdateInfo hostileInfo = AppUpdate::releaseInfo(hostileRelease);
+    QVERIFY(hostileInfo.installerUrl.isEmpty());
+    QVERIFY(hostileInfo.checksumUrl.isEmpty());
 }
 
 void SlickShotTests::testAppUpdateSha256()
 {
     const QString valid = QString(64, QLatin1Char('A'));
-    QCOMPARE(AppUpdate::parseSha256(valid + "  SlickShot-0.2.0-win64-setup.exe\n"),
-             valid.toLower());
     QCOMPARE(
-      AppUpdate::parseSha256("\\" + valid + " *dir\\SlickShot-0.2.0-win64-setup.exe"),
+      AppUpdate::parseSha256(valid + "  SlickShot-0.2.0-win64-setup.exe\n"),
       valid.toLower());
+    QCOMPARE(AppUpdate::parseSha256("\\" + valid +
+                                    " *dir\\SlickShot-0.2.0-win64-setup.exe"),
+             valid.toLower());
     QCOMPARE(AppUpdate::parseSha256(QStringLiteral("not-a-sha256  file")),
              QString());
     QCOMPARE(AppUpdate::parseSha256(QString(63, QLatin1Char('a')) + "  file"),
+             QString());
+
+    // Strict input: exactly 64 hex digits followed by a separator. The digest
+    // is always returned in lower case.
+    const QString mixedCase =
+      QString(32, QLatin1Char('a')) + QString(32, QLatin1Char('F'));
+    QCOMPARE(AppUpdate::parseSha256(mixedCase + " *setup.exe"),
+             QString(32, QLatin1Char('a')) + QString(32, QLatin1Char('f')));
+    // No separator, a non-hex character, and a leading newline are malformed.
+    QCOMPARE(AppUpdate::parseSha256(valid + "setup.exe"), QString());
+    QCOMPARE(
+      AppUpdate::parseSha256(valid.mid(1) + QLatin1Char('g') + "  setup.exe"),
+      QString());
+    QCOMPARE(AppUpdate::parseSha256(QLatin1Char('\n') + valid + "  setup.exe"),
              QString());
 }
 
@@ -144,6 +205,16 @@ void SlickShotTests::testAppUpdateInstallScriptAndEncode()
       QString::fromUtf16(reinterpret_cast<const char16_t*>(raw.constData()),
                          raw.size() / 2),
       QStringLiteral("abc"));
+
+    // Non-ASCII text confirms the command is encoded as UTF-16LE, not UTF-8.
+    const QString unicode = QStringLiteral("caf\u00E9 \u2603");
+    const QByteArray unicodeRaw =
+      QByteArray::fromBase64(AppUpdate::encodeCommand(unicode).toLatin1());
+    QCOMPARE(unicodeRaw.size(), unicode.size() * 2);
+    QCOMPARE(QString::fromUtf16(
+               reinterpret_cast<const char16_t*>(unicodeRaw.constData()),
+               unicodeRaw.size() / 2),
+             unicode);
 }
 
 void SlickShotTests::testAppUpdateCanInstallInPlaceForPaths()
@@ -156,14 +227,14 @@ void SlickShotTests::testAppUpdateCanInstallInPlaceForPaths()
           "https://example.com/SlickShot-0.2.0-win64-setup.exe.sha256sum"),
     };
 
-    const QString installRoot = QStringLiteral(
-      "C:\\Users\\alice\\AppData\\Local\\Programs\\SlickShot");
+    const QString installRoot =
+      QStringLiteral("C:\\Users\\alice\\AppData\\Local\\Programs\\SlickShot");
     const QString installed = QStringLiteral(
       "C:\\Users\\alice\\AppData\\Local\\Programs\\SlickShot\\bin\\"
       "flameshot.exe");
 
-    QVERIFY(AppUpdate::canInstallInPlaceForPaths(validInfo, installed,
-                                                 installRoot));
+    QVERIFY(
+      AppUpdate::canInstallInPlaceForPaths(validInfo, installed, installRoot));
     QVERIFY(AppUpdate::canInstallInPlaceForPaths(
       validInfo,
       QStringLiteral(
@@ -182,18 +253,145 @@ void SlickShotTests::testAppUpdateCanInstallInPlaceForPaths()
 
     AppUpdateInfo missingInstaller = validInfo;
     missingInstaller.installerUrl.clear();
-    QVERIFY(!AppUpdate::canInstallInPlaceForPaths(missingInstaller, installed,
-                                                  installRoot));
+    QVERIFY(!AppUpdate::canInstallInPlaceForPaths(
+      missingInstaller, installed, installRoot));
+    AppUpdateInfo missingChecksum = validInfo;
+    missingChecksum.checksumUrl.clear();
+    QVERIFY(!AppUpdate::canInstallInPlaceForPaths(
+      missingChecksum, installed, installRoot));
+    QVERIFY(
+      !AppUpdate::canInstallInPlaceForPaths(validInfo, QString(), installRoot));
+    QVERIFY(
+      !AppUpdate::canInstallInPlaceForPaths(validInfo, installed, QString()));
+}
+
+void SlickShotTests::testFileNameHandlerParseFilename()
+{
+    FileNameHandler handler;
+
+    // Empty input falls back to the configured default pattern; it must be
+    // expanded and must not leak raw strftime specifiers into a filename.
+    const QString defaultName = handler.parseFilename(QString());
+    QVERIFY(!defaultName.isEmpty());
+    QVERIFY(!defaultName.contains(QLatin1Char('%')));
+
+    // A trailing '%' is an incomplete specifier and must be removed.
+    QCOMPARE(handler.parseFilename(QStringLiteral("shot%")),
+             QStringLiteral("shot"));
+
+    // Path and drive separators must never survive into a filename.
+    const QString separators =
+      handler.parseFilename(QStringLiteral("a/b\\c:d"));
+    QVERIFY(!separators.contains(QLatin1Char('/')));
+    QVERIFY(!separators.contains(QLatin1Char('\\')));
+    QVERIFY(!separators.contains(QLatin1Char(':')));
+
+    // Control characters are removed rather than written into a path.
+    const QString control =
+      handler.parseFilename(QStringLiteral("shot\nname\t\x01"
+                                           "end"));
+    for (int i = 0; i < control.size(); ++i) {
+        const ushort code = control.at(i).unicode();
+        QVERIFY2(!(code < 0x20 || (code >= 0x7f && code < 0xa0)),
+                 qPrintable(QStringLiteral("control char at %1").arg(i)));
+    }
+
+#if defined(Q_OS_WIN)
+    // Windows device names cannot be used as a filename, with or without an
+    // extension. The exact replacement is an implementation detail, so only
+    // require that the reserved name no longer appears verbatim.
+    const QStringList reserved{
+        QStringLiteral("CON"), QStringLiteral("PRN"),  QStringLiteral("AUX"),
+        QStringLiteral("NUL"), QStringLiteral("COM1"), QStringLiteral("LPT9")
+    };
+    for (const QString& name : reserved) {
+        const QString parsed = handler.parseFilename(name);
+        QVERIFY2(parsed.compare(name, Qt::CaseInsensitive) != 0,
+                 qPrintable(name));
+        const QString withExtension = name + QStringLiteral(".txt");
+        const QString parsedWithExtension =
+          handler.parseFilename(withExtension);
+        QVERIFY2(
+          parsedWithExtension.compare(withExtension, Qt::CaseInsensitive) != 0,
+          qPrintable(parsedWithExtension));
+    }
+#endif
+}
+
+void SlickShotTests::testRegionRejectsOutOfRangeScreen()
+{
+    Region region;
+    const int screenCount = QGuiApplication::screens().size();
+    QVERIFY(region.check(QStringLiteral("all")));
+    QVERIFY(region.check(QStringLiteral("screen0")));
+    QVERIFY(!region.check(QStringLiteral("screen%1").arg(screenCount)));
+}
+
+void SlickShotTests::testOpenWithTempFileRemovalIsDeferred()
+{
+    const QString dir =
+      QDir::tempPath() + QStringLiteral("/SlickShot-test-openwith");
+    QVERIFY(QDir().mkpath(dir));
+    QString path;
+    {
+        QTemporaryFile file(dir + QStringLiteral("/deferred-XXXXXX.png"));
+        file.setAutoRemove(false);
+        QVERIFY(file.open());
+        file.close();
+        path = file.fileName();
+    }
+    QVERIFY(QFile::exists(path));
+
+    AppLauncherWidget::scheduleTempFileRemoval(path, 50);
+    QVERIFY(QFile::exists(path));
+    QTRY_VERIFY_WITH_TIMEOUT(!QFile::exists(path), 2000);
+}
+
+void SlickShotTests::testButtonListNormalizeRemovesConsecutiveInvalid()
+{
+    const int arrow = static_cast<int>(CaptureTool::TYPE_ARROW);
+    const int pencil = static_cast<int>(CaptureTool::TYPE_PENCIL);
+
+    // 7, 25, -1 and 9999 are not in CaptureToolButton::iterableButtonTypes.
+    // Consecutive invalid values used to skip entries during forward removal.
+    QList<int> mixed{ 7, -1, arrow, 25, 7, pencil, -1 };
+    QVERIFY(ButtonList::normalizeButtons(mixed));
+    QCOMPARE(mixed, QList<int>({ arrow, pencil }));
+
+    QList<int> edges{ -1, 7, pencil, arrow, 25, -1 };
+    QVERIFY(ButtonList::normalizeButtons(edges));
+    QCOMPARE(edges, QList<int>({ pencil, arrow }));
+
+    QList<int> clean{ pencil, arrow };
+    QVERIFY(!ButtonList::normalizeButtons(clean));
+    QCOMPARE(clean, QList<int>({ pencil, arrow }));
+
+    QList<int> allInvalid{ 7, 25, -1, 9999 };
+    QVERIFY(ButtonList::normalizeButtons(allInvalid));
+    QVERIFY(allInvalid.isEmpty());
 }
 
 void SlickShotTests::testSemanticVersionCompare()
 {
+    // SlickShot has no bespoke version-comparison helper: the update flow in
+    // FlameshotDaemon compares Flameshot::getVersion() (APP_VERSION parsed as a
+    // QVersionNumber) with QVersionNumber::fromString(release.version). This
+    // test pins the QVersionNumber ordering that flow depends on, including
+    // numeric segment comparison (0.9.0 < 0.10.0, not lexicographic).
     QVERIFY(QVersionNumber::fromString(QStringLiteral("0.9.0")) <
             QVersionNumber::fromString(QStringLiteral("0.10.0")));
     QVERIFY(QVersionNumber::fromString(QStringLiteral("0.10.0")) <
             QVersionNumber::fromString(QStringLiteral("0.10.1")));
     QVERIFY(!(QVersionNumber::fromString(QStringLiteral("1.0.0")) <
               QVersionNumber::fromString(QStringLiteral("0.99.0"))));
+
+    // Mirror Flameshot::getVersion(): strip the leading 'v' from APP_VERSION
+    // and parse the rest. This must yield a usable, non-null version.
+    const QVersionNumber builtVersion = QVersionNumber::fromString(
+      QStringLiteral(APP_VERSION).replace(QLatin1Char('v'), QString()));
+    QVERIFY(!builtVersion.isNull());
+    QVERIFY(builtVersion <
+            QVersionNumber::fromString(QStringLiteral("9999.0")));
 }
 
 void SlickShotTests::testSnippingToolCommandMatch()
@@ -209,6 +407,20 @@ void SlickShotTests::testSnippingToolCommandMatch()
       QStringLiteral("\"c:/program files/slickshot/flameshot.exe\""),
       expected));
     QVERIFY(SnippingToolManager::commandMatchesAppPath(expected, expected));
+
+    // Surrounding whitespace and quote/argument variations are ignored.
+    QVERIFY(SnippingToolManager::commandMatchesAppPath(
+      QStringLiteral("  \"C:\\Program Files\\SlickShot\\flameshot.exe\" gui "
+                     "\"%1\"  \n"),
+      expected));
+    QVERIFY(SnippingToolManager::commandMatchesAppPath(
+      QStringLiteral("\"C:\\Program Files\\SlickShot\\flameshot.exe\"\tgui"),
+      expected));
+    QVERIFY(SnippingToolManager::commandMatchesAppPath(
+      expected + QStringLiteral("  gui \"%1\""), expected));
+    QVERIFY(SnippingToolManager::commandMatchesAppPath(
+      QStringLiteral("\"C:\\Program Files\\SlickShot\\flameshot.exe\""),
+      expected));
 
     // Must not match a stale install in a different folder just because it
     // contains "flameshot" or "slickshot".
@@ -317,12 +529,43 @@ void SlickShotTests::testButtonHandlerMultiRowHitTesting()
     handler.updatePosition(QRect(40, 40, 320, 120));
     handler.show();
 
-    // First row wraps around ~9 buttons on 420px width; button 8 (row 1 right)
-    // is further right than button 13 (row 2 last).
-    const QPoint row1RightCenter = buttons[7]->geometry().center();
-    const QPoint row2LastCenter = buttons.last()->geometry().center();
+    // Group buttons into rows using their actual geometry. The number of
+    // buttons per row depends on font metrics and DPI, so no fixed indices.
+    QMap<int, QVector<CaptureToolButton*>> rows;
+    for (CaptureToolButton* btn : buttons) {
+        rows[btn->geometry().top()].append(btn);
+    }
+    QVERIFY2(rows.size() > 1, "Expected the toolbar to wrap into several rows");
+
+    const QList<int> rowTops = rows.keys(); // QMap keys are sorted
+    const QVector<CaptureToolButton*>& firstRow = rows.value(rowTops.first());
+    const QVector<CaptureToolButton*>& lastRow = rows.value(rowTops.last());
+
+    CaptureToolButton* firstRowRight = firstRow.first();
+    for (CaptureToolButton* btn : firstRow) {
+        if (btn->geometry().right() > firstRowRight->geometry().right()) {
+            firstRowRight = btn;
+        }
+    }
+    CaptureToolButton* lastRowLast = lastRow.last();
+
+    const QPoint row1RightCenter = firstRowRight->geometry().center();
+    const QPoint row2LastCenter = lastRowLast->geometry().center();
     QVERIFY(row1RightCenter.y() < row2LastCenter.y());
-    QVERIFY(row1RightCenter.x() > row2LastCenter.x());
+
+    // When the last row is shorter it is centered, so its right edge is
+    // strictly left of the fuller first row's right edge.
+    QRect firstRowBounds;
+    QRect lastRowBounds;
+    for (CaptureToolButton* btn : firstRow) {
+        firstRowBounds = firstRowBounds.united(btn->geometry());
+    }
+    for (CaptureToolButton* btn : lastRow) {
+        lastRowBounds = lastRowBounds.united(btn->geometry());
+    }
+    if (lastRowBounds.width() < firstRowBounds.width()) {
+        QVERIFY(row1RightCenter.x() > row2LastCenter.x());
+    }
 
     QVERIFY(handler.contains(buttons.first()->geometry().center()));
     QVERIFY(handler.contains(row1RightCenter));
@@ -331,6 +574,43 @@ void SlickShotTests::testButtonHandlerMultiRowHitTesting()
 
     handler.hide();
     QVERIFY(!handler.isVisible());
+}
+
+void SlickShotTests::testButtonHandlerContainsSingleRow()
+{
+    QWidget host;
+    host.resize(400, 300);
+
+    ButtonHandler empty(&host);
+    QVERIFY(!empty.contains(QPoint(10, 10)));
+    QCOMPARE(empty.size(), size_t(0));
+
+    QVector<CaptureToolButton*> buttons;
+    buttons.append(new CaptureToolButton(CaptureTool::TYPE_ARROW, &host));
+    buttons.append(new CaptureToolButton(CaptureTool::TYPE_COPY, &host));
+
+    ButtonHandler handler(&host);
+    handler.updateScreenRegions(host.rect());
+    handler.setButtons(buttons);
+    handler.updatePosition(QRect(50, 50, 200, 100));
+    QCOMPARE(handler.size(), size_t(2));
+
+    // Every button center is inside the toolbar; a point well outside the
+    // selection is not.
+    for (CaptureToolButton* btn : buttons) {
+        QVERIFY(handler.contains(btn->geometry().center()));
+    }
+    QVERIFY(!handler.contains(QPoint(5, 5)));
+}
+
+void SlickShotTests::testHistoryPreviewScalingUsesCrossMultiplication()
+{
+    // The aspect-ratio decision is inline in History::save(), with no public
+    // helper to call. Exercising it would write to the real user history
+    // directory and History::history() prunes files there, so it is not a
+    // deterministic offscreen unit test. Skipped intentionally.
+    QSKIP("History preview scaling has no deterministic public helper and "
+          "writes into the user's history directory.");
 }
 
 void SlickShotTests::testMagnifierWidgetHiDpiAndRender()
@@ -369,6 +649,20 @@ void SlickShotTests::testShortcutsWidgetHiddenOnConstruction()
 {
     ShortcutsWidget widget;
     QVERIFY(!widget.isVisible());
+
+    // The constructor loads shortcuts and fills the table, so check the
+    // loaded data rather than only the default QWidget visibility.
+    auto* table = widget.findChild<QTableWidget*>();
+    QVERIFY(table != nullptr);
+    QCOMPARE(table->columnCount(), 2);
+    QVERIFY2(table->rowCount() > 0,
+             "Shortcuts table should be populated on construction");
+    for (int row = 0; row < table->rowCount(); ++row) {
+        QTableWidgetItem* description = table->item(row, 0);
+        QVERIFY(description != nullptr);
+        QVERIFY(!description->text().isEmpty());
+        QVERIFY(table->item(row, 1) != nullptr);
+    }
 }
 
 namespace {

@@ -38,4 +38,11 @@ private:
     QString m_tempString;
     bool m_valid;
     bool m_drawOutline = false;
+
+    // Fitted pixel size for the count bubble. Its only inputs are the count,
+    // the bubble size and the font family, so it is computed once per change.
+    int m_cachedFontSize = -1;
+    int m_cachedCount = -1;
+    int m_cachedBubbleSize = -1;
+    QString m_cachedFontFamily;
 };

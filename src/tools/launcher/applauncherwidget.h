@@ -27,6 +27,7 @@ class AppLauncherWidget : public QWidget
     Q_OBJECT
 public:
     explicit AppLauncherWidget(const QPixmap& p, QWidget* parent = nullptr);
+    static void scheduleTempFileRemoval(const QString& path, int delayMs);
 
 private slots:
     void launch(const QModelIndex& index);
@@ -34,6 +35,8 @@ private slots:
     void searchChanged(const QString& text);
 
 private:
+    void removeTempFile();
+    void releaseTempFile();
     void initListWidget();
     void initAppMap();
     void configureListView(QListWidget* widget);

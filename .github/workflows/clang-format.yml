@@ -37,3 +37,9 @@ jobs:
         extensions: 'h,cpp'
         clangFormatVersion: 11
         style: file
+    - uses: DoozyX/clang-format-lint-action@v0.18
+      with:
+        source: './tests'
+        extensions: 'h,cpp'
+        clangFormatVersion: 11
+        style: file

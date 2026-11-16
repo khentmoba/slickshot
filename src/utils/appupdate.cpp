@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QRegularExpression>
+#include <QUrl>
 
 #if defined(Q_OS_WIN)
 #include <windows.h>
@@ -38,6 +39,25 @@ QString toSlashes(QString path)
 
 } // namespace
 
+bool AppUpdate::isTrustedAssetUrl(const QString& value)
+{
+    const QUrl url(value);
+    if (!url.isValid()) {
+        return false;
+    }
+    if (url.scheme().compare(QLatin1String("https"), Qt::CaseInsensitive) !=
+        0) {
+        return false;
+    }
+    const QString host = url.host().toLower();
+    // browser_download_url normally points at github.com; GitHub may redirect
+    // asset downloads to these hosts, so allow them as download origins too.
+    return host == QLatin1String("github.com") ||
+           host == QLatin1String("objects.githubusercontent.com") ||
+           host == QLatin1String("github-releases.githubusercontent.com") ||
+           host == QLatin1String("release-assets.githubusercontent.com");
+}
+
 AppUpdateInfo AppUpdate::releaseInfo(const QJsonObject& release)
 {
     AppUpdateInfo info;
@@ -45,15 +65,32 @@ AppUpdateInfo AppUpdate::releaseInfo(const QJsonObject& release)
     if (info.version.startsWith(QLatin1Char('v'))) {
         info.version.remove(0, 1);
     }
-    info.pageUrl = release["html_url"].toString();
+
+    // Never open a release page handed to us by an untrusted response unless it
+    // is an HTTPS page on GitHub.
+    const QString pageUrl = release["html_url"].toString();
+    const QUrl page(pageUrl);
+    if (page.isValid() &&
+        page.scheme().compare(QLatin1String("https"), Qt::CaseInsensitive) ==
+          0 &&
+        page.host().compare(QLatin1String("github.com"), Qt::CaseInsensitive) ==
+          0) {
+        info.pageUrl = pageUrl;
+    }
 
     const QJsonArray assets = release["assets"].toArray();
-    info.installerUrl = assetUrl(
+    const QString installer = assetUrl(
       assets, QStringLiteral("^SlickShot-[0-9A-Za-z._+-]+-win64-setup\\.exe$"));
-    info.checksumUrl =
+    const QString checksum =
       assetUrl(assets,
                QStringLiteral(
                  "^SlickShot-[0-9A-Za-z._+-]+-win64-setup\\.exe\\.sha256sum$"));
+    // Only accept asset URLs we are willing to download from. When either is
+    // untrusted, leave both empty so the caller falls back to the release page.
+    if (isTrustedAssetUrl(installer) && isTrustedAssetUrl(checksum)) {
+        info.installerUrl = installer;
+        info.checksumUrl = checksum;
+    }
     return info;
 }
 
@@ -95,11 +132,18 @@ bool AppUpdate::canInstallInPlace(const AppUpdateInfo& info)
 
 QString AppUpdate::parseSha256(const QString& checksumFile)
 {
-    // sha256sum writes "<digest> *<name>", with a leading "\" when the name
-    // contains backslashes.
+    // sha256sum writes "<digest> *<name>" (the '*' marks binary mode), with a
+    // leading '\' when the file name contains backslashes. Accept only that
+    // exact shape: 64 hex digits followed by spaces/tabs and an optional '*'.
+    // Allow a single leading UTF-8 BOM, which is otherwise not part of the
+    // line.
+    QString line = checksumFile;
+    if (line.startsWith(QChar(0xFEFF))) {
+        line.remove(0, 1);
+    }
     static const QRegularExpression digest(
-      QStringLiteral("^\\\\?([0-9a-fA-F]{64})\\s"));
-    const QRegularExpressionMatch match = digest.match(checksumFile);
+      QStringLiteral("^\\\\?([0-9a-fA-F]{64})[ \\t]+\\*?"));
+    const QRegularExpressionMatch match = digest.match(line);
     return match.hasMatch() ? match.captured(1).toLower() : QString();
 }
 
@@ -119,7 +163,13 @@ QString AppUpdate::installScript(qint64 pid,
              "$log = Join-Path $env:TEMP 'SlickShot-update.log'\n"
              "$installer = %2\n"
              "$app = %4\n"
-             "Wait-Process -Id %1 -ErrorAction SilentlyContinue\n"
+             "# Bound the wait so a hung SlickShot cannot block the update.\n"
+             "try {\n"
+             "  Wait-Process -Id %1 -Timeout 120 -ErrorAction Stop\n"
+             "} catch {\n"
+             "  ('Timed out waiting for SlickShot to exit: ' + $_) | "
+             "Add-Content -LiteralPath $log\n"
+             "}\n"
              "try {\n"
              "  # Hold the installer open until it exits. Other processes "
              "cannot\n"

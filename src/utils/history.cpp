@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QProcessEnvironment>
+#include <QStandardPaths>
 #include <QStringList>
 
 History::History()
@@ -11,7 +12,9 @@ History::History()
     // Get cache history path
     ConfigHandler config;
 #ifdef Q_OS_WIN
-    m_historyPath = QDir::homePath() + "/AppData/Roaming/flameshot/history/";
+    m_historyPath =
+      QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+      "/history/";
 #else
     QString cachepath = QProcessEnvironment::systemEnvironment().value(
       "XDG_CACHE_HOME", QDir::homePath() + "/.cache");
@@ -34,8 +37,8 @@ void History::save(const QPixmap& pixmap, const QString& fileName)
 {
     // scale preview only in local disk
     QPixmap pixmapScaled = QPixmap(pixmap);
-    if (pixmap.height() / HISTORYPIXMAP_MAX_PREVIEW_HEIGHT >=
-        pixmap.width() / HISTORYPIXMAP_MAX_PREVIEW_WIDTH) {
+    if (pixmap.height() * HISTORYPIXMAP_MAX_PREVIEW_WIDTH >=
+        pixmap.width() * HISTORYPIXMAP_MAX_PREVIEW_HEIGHT) {
         pixmapScaled = pixmap.scaledToHeight(HISTORYPIXMAP_MAX_PREVIEW_HEIGHT,
                                              Qt::SmoothTransformation);
     } else {

@@ -7,8 +7,37 @@
 #include "utils/strfparse.h"
 
 #include <QDir>
+#if defined(Q_OS_WIN)
+#include <QSet>
+#endif
 #include <exception>
 #include <locale>
+
+#if defined(Q_OS_WIN)
+namespace {
+
+// Windows reserves these device names (with any extension) regardless of case.
+bool isWindowsReservedName(const QString& name)
+{
+    const QString base = name.section(QLatin1Char('.'), 0, 0).toUpper();
+    static const QSet<QString> reserved{
+        QStringLiteral("CON"),    QStringLiteral("PRN"),
+        QStringLiteral("AUX"),    QStringLiteral("NUL"),
+        QStringLiteral("CONIN$"), QStringLiteral("CONOUT$")
+    };
+    if (reserved.contains(base)) {
+        return true;
+    }
+    if (base.size() == 4 && (base.startsWith(QLatin1String("COM")) ||
+                             base.startsWith(QLatin1String("LPT")))) {
+        const QChar digit = base.at(3);
+        return digit >= QChar('1') && digit <= QChar('9');
+    }
+    return false;
+}
+
+} // namespace
+#endif
 
 FileNameHandler::FileNameHandler(QObject* parent)
   : QObject(parent)
@@ -41,12 +70,31 @@ QString FileNameHandler::parseFilename(const QString& name)
         res.chop(1);
     }
 
+    // Format the sanitized pattern (not the original name) so the empty-name
+    // default and the trailing-% cleanup above are actually honored.
     res =
-      QString::fromStdString(strfparse::format_time_string(name.toStdString()));
+      QString::fromStdString(strfparse::format_time_string(res.toStdString()));
 
     // add the parsed pattern in a correct format for the filesystem
     res = res.replace(QLatin1String("/"), QStringLiteral("⁄"))
+            .replace(QLatin1String("\\"), QStringLiteral("⁄"))
             .replace(QLatin1String(":"), QLatin1String("-"));
+
+    // Control characters are not valid in file names on any platform.
+    for (int i = 0; i < res.size(); ++i) {
+        const ushort code = res.at(i).unicode();
+        if (code < 0x20 || (code >= 0x7f && code < 0xa0)) {
+            res[i] = QChar('_');
+        }
+    }
+
+#if defined(Q_OS_WIN)
+    // A bare reserved device name is not a usable file name on Windows.
+    if (isWindowsReservedName(res)) {
+        res.prepend(QLatin1Char('_'));
+    }
+#endif
+
     return res;
 }
 

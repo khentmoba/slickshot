@@ -6,18 +6,21 @@
 .DESCRIPTION
     -Installer <setup.exe> -Version <x.y.z>
         Installs silently, installs again over the live install (the upgrade
-        path), checks that uninstall refuses while SlickShot is running and
-        leaves the install whole, then runs the registered uninstaller the way
-        Windows Settings does. Fails if any file is left in the install folder
-        (uninstall residue).
+        path), checks that a marker config file in the Roaming config location
+        survives that upgrade, checks that uninstall refuses while SlickShot is
+        running and leaves the install whole, then runs the registered
+        uninstaller the way Windows Settings does. Fails if any file is left in
+        the install folder (uninstall residue).
 
     -PortableZip <zip>
-        Checks the .sha256sum sidecar: it must name the zip by bare filename and
-        its hash must match the zip.
+        Checks the .sha256sum sidecar (bare filename and hash), extracts the zip
+        to a temporary folder, checks that it contains bin\flameshot.exe and a
+        populated translations folder if one is present, then cleans up.
 
-    The installer mode targets the real per-user install paths, so it only runs
-    in CI (CI=true). Outside CI it requires -InstallDir, -ShortcutPath and
-    -UninstallKey, which keeps a developer's own SlickShot install out of reach.
+    The installer mode targets the real per-user install and config paths, so it
+    only runs in CI (CI=true). Outside CI it requires -InstallDir,
+    -ShortcutPath, -UninstallKey and -ConfigDir, which keeps a developer's own
+    SlickShot install and settings out of reach.
 #>
 [CmdletBinding()]
 param(
@@ -27,6 +30,9 @@ param(
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'Programs\SlickShot'),
     [string]$ShortcutPath = (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\SlickShot.lnk'),
     [string]$UninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SlickShot',
+    # Installer builds keep config in user scope at
+    # %APPDATA%\flameshot\flameshot.ini (the directory name is inherited).
+    [string]$ConfigDir = (Join-Path $env:APPDATA 'flameshot'),
     [int]$TimeoutSeconds = 60
 )
 
@@ -55,6 +61,30 @@ function Test-PortableChecksum([string]$Zip) {
     Assert-Check ($namedFile -ceq $zipName) "sidecar names the bare filename (got '$namedFile')"
     $actualHash = (Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash
     Assert-Check ($actualHash -ieq $expectedHash) 'sidecar hash matches the zip'
+}
+
+function Test-PortableContents([string]$Zip) {
+    # CPack may or may not add a top-level directory to the archive, so look for
+    # the executable under any bin\ directory in the extraction.
+    $temp = Join-Path ([System.IO.Path]::GetTempPath()) ("slickshot-smoke-" + [guid]::NewGuid().ToString('N'))
+    New-Item -Path $temp -ItemType Directory -Force | Out-Null
+    try {
+        Expand-Archive -LiteralPath $Zip -DestinationPath $temp -Force
+
+        $exe = Get-ChildItem -LiteralPath $temp -Recurse -File -Filter 'flameshot.exe' |
+            Where-Object { $_.DirectoryName -match '[\\/]bin$' } |
+            Select-Object -First 1
+        Assert-Check ($null -ne $exe) 'portable archive contains bin\flameshot.exe'
+
+        $translations = Get-ChildItem -LiteralPath $temp -Recurse -Directory -Filter 'translations' |
+            Select-Object -First 1
+        if ($null -ne $translations) {
+            $entries = @(Get-ChildItem -LiteralPath $translations.FullName -Force)
+            Assert-Check ($entries.Count -gt 0) 'portable archive translations folder is populated'
+        }
+    } finally {
+        Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Invoke-SilentInstaller([string]$Label) {
@@ -97,11 +127,14 @@ function Test-UninstallRefusedWhileRunning {
     $app = Join-Path $InstallDir 'bin\flameshot.exe'
     $lock = [System.IO.File]::Open($app, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
     try {
-        $null = Start-RegisteredUninstall
-        # The registered command hands its work to a copy of itself and returns
-        # first, so wait a fixed grace period. A refusal leaves the install whole;
-        # a removal finishes well inside the grace period.
-        Start-Sleep -Seconds 10
+        $proc = Start-RegisteredUninstall
+        # The registered command hands its work to a copy of itself and exits
+        # first. Wait on the launcher, then give the child time to attempt the
+        # removal so a broken lock guard cannot pass before the deletion runs.
+        Wait-Process -Id $proc.Id -Timeout $TimeoutSeconds -ErrorAction SilentlyContinue
+        $proc.Refresh()
+        Assert-Check $proc.HasExited "registered uninstall process exited within $TimeoutSeconds seconds"
+        Start-Sleep -Seconds 5
         Assert-Check (Test-Path -LiteralPath (Join-Path $InstallDir 'bin\flameshot.exe')) 'refused uninstall left the app binary'
         Assert-Check (Test-Path -LiteralPath (Join-Path $InstallDir 'uninstall.exe')) 'refused uninstall left the uninstaller'
         Assert-Check (Test-Path -LiteralPath $UninstallKey) 'refused uninstall left the registry entry'
@@ -117,8 +150,21 @@ function Test-InstallerRoundTrip {
     Invoke-SilentInstaller 'first silent install'
     Assert-Installed
 
+    # Installer builds use QSettings UserScope, so settings live in Roaming and
+    # must not be removed by the installer's RMDir of the install folder.
+    $configFile = Join-Path $ConfigDir 'flameshot.ini'
+    $configExisted = Test-Path -LiteralPath $configFile
+    $marker = "slickshot-smoke-$([guid]::NewGuid().ToString('N'))"
+    if (-not (Test-Path -LiteralPath $ConfigDir)) {
+        New-Item -Path $ConfigDir -ItemType Directory -Force | Out-Null
+    }
+    Set-Content -LiteralPath $configFile -Value "; SlickShot smoke-test marker: $marker" -Encoding UTF8 -Force
+    Assert-Check (Test-Path -LiteralPath $configFile) 'marker config file written before upgrade install'
+
     Invoke-SilentInstaller 'second silent install over the live install (upgrade)'
     Assert-Installed
+    Assert-Check (Test-Path -LiteralPath $configFile) 'config file still exists after the upgrade install'
+    Assert-Check ((Get-Content -LiteralPath $configFile -Raw) -match [regex]::Escape($marker)) 'config marker survived the upgrade install'
 
     Test-UninstallRefusedWhileRunning
 
@@ -131,18 +177,25 @@ function Test-InstallerRoundTrip {
     Write-Host "PASS: uninstall removed $InstallDir"
     Assert-Check (-not (Test-Path -LiteralPath $UninstallKey)) 'registry entry removed'
     Assert-Check (-not (Test-Path -LiteralPath $ShortcutPath)) 'Start Menu shortcut removed'
+
+    # Do not leave a marker behind in an isolated developer config directory.
+    if (-not $configExisted) {
+        Remove-Item -LiteralPath $configFile -Force -ErrorAction SilentlyContinue
+    }
 }
 
 if ($PortableZip) {
     Test-PortableChecksum $PortableZip
+    Test-PortableContents $PortableZip
 } elseif ($Installer) {
     if (-not $Version) { throw 'SMOKE FAIL: -Version is required with -Installer' }
 
     $isolated = $PSBoundParameters.ContainsKey('InstallDir') -and
                 $PSBoundParameters.ContainsKey('ShortcutPath') -and
-                $PSBoundParameters.ContainsKey('UninstallKey')
+                $PSBoundParameters.ContainsKey('UninstallKey') -and
+                $PSBoundParameters.ContainsKey('ConfigDir')
     if (-not $isolated -and $env:CI -ne 'true') {
-        throw 'SMOKE FAIL: refusing to touch the real per-user SlickShot install outside CI. Run in CI, or pass -InstallDir, -ShortcutPath and -UninstallKey.'
+        throw 'SMOKE FAIL: refusing to touch the real per-user SlickShot install outside CI. Run in CI, or pass -InstallDir, -ShortcutPath, -UninstallKey and -ConfigDir.'
     }
 
     Assert-Check (Test-Path -LiteralPath $Installer) 'installer exists'

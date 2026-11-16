@@ -16,6 +16,9 @@ if(Qt${QT_VERSION_MAJOR}Test_FOUND)
     Qt${QT_VERSION_MAJOR}::Test
   )
 
+  # AppUpdate helpers are exercised directly by tst_slickshot. When the update
+  # checker is compiled out they are not part of flameshot_lib, so compile the
+  # source into the test target in that configuration.
   if(DISABLE_UPDATE_CHECKER)
     target_sources(tst_slickshot PRIVATE
       ${CMAKE_SOURCE_DIR}/src/utils/appupdate.cpp

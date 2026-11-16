@@ -9,7 +9,10 @@
 #include "utils/globalvalues.h"
 
 #include <QCheckBox>
+#include <QDateTime>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLineEdit>
@@ -23,6 +26,7 @@
 #include <QStandardPaths>
 #include <QTabWidget>
 #include <QTemporaryFile>
+#include <QTimer>
 
 namespace {
 
@@ -44,11 +48,40 @@ QMap<QString, QString> catIconNames(
 }
 #endif
 
+namespace {
+
+constexpr int kCleanupDelayMs = 60 * 1000;
+constexpr int kStaleAgeSecs = 2 * 60;
+
+QString openWithTempDirPath()
+{
+    return QDir::tempPath() + QStringLiteral("/SlickShot-openwith");
+}
+
+void sweepStaleTempFiles()
+{
+    QDir dir(openWithTempDirPath());
+    if (!dir.exists()) {
+        return;
+    }
+    const QDateTime now = QDateTime::currentDateTime();
+    const QFileInfoList files = dir.entryInfoList(QDir::Files);
+    for (const QFileInfo& info : files) {
+        if (info.lastModified().secsTo(now) > kStaleAgeSecs) {
+            QFile::remove(info.absoluteFilePath());
+        }
+    }
+}
+
+} // namespace
+
 AppLauncherWidget::AppLauncherWidget(const QPixmap& p, QWidget* parent)
   : QWidget(parent)
   , m_pixmap(p)
 {
     setAttribute(Qt::WA_DeleteOnClose);
+    QDir().mkpath(openWithTempDirPath());
+    sweepStaleTempFiles();
     setWindowIcon(QIcon(GlobalValues::iconPath()));
     setWindowTitle(tr("Open With"));
 
@@ -108,12 +141,45 @@ AppLauncherWidget::AppLauncherWidget(const QPixmap& p, QWidget* parent)
     m_lineEdit->setFocus();
 }
 
+void AppLauncherWidget::scheduleTempFileRemoval(const QString& path,
+                                                int delayMs)
+{
+    if (path.isEmpty()) {
+        return;
+    }
+    // The external application needs time to open the file after startDetached
+    // returns, so never remove it while the dialog is being destroyed.
+    QTimer::singleShot(delayMs, [path]() { QFile::remove(path); });
+}
+
+void AppLauncherWidget::removeTempFile()
+{
+    if (!m_tempFile) {
+        return;
+    }
+    const QString path = m_tempFile->fileName();
+    delete m_tempFile;
+    m_tempFile = nullptr;
+    if (!path.isEmpty()) {
+        QFile::remove(path);
+    }
+}
+
+void AppLauncherWidget::releaseTempFile()
+{
+    if (!m_tempFile) {
+        return;
+    }
+    delete m_tempFile;
+    m_tempFile = nullptr;
+}
+
 void AppLauncherWidget::launch(const QModelIndex& index)
 {
     if (!m_tempFile || !QFileInfo(m_tempFile->fileName()).isReadable()) {
-        delete m_tempFile;
+        removeTempFile();
         // _XXXXXX is how Qt temporary files are mocked before substitution
-        m_tempFile = new QTemporaryFile(QDir::tempPath() + "/" +
+        m_tempFile = new QTemporaryFile(openWithTempDirPath() + "/" +
                                           FileNameHandler().parsedPattern() +
                                           "_XXXXXX.png",
                                         this);
@@ -121,6 +187,7 @@ void AppLauncherWidget::launch(const QModelIndex& index)
         if (!m_tempFile->open()) {
             QMessageBox::about(
               this, tr("Error"), tr("Unable to write in") + QDir::tempPath());
+            removeTempFile();
             return;
         }
         m_tempFile->close();
@@ -128,6 +195,7 @@ void AppLauncherWidget::launch(const QModelIndex& index)
         if (!ok) {
             QMessageBox::about(
               this, tr("Error"), tr("Unable to write in") + QDir::tempPath());
+            removeTempFile();
             return;
         }
     }
@@ -158,9 +226,10 @@ void AppLauncherWidget::launch(const QModelIndex& index)
     QString app_name = prog_args.at(0);
     bool inTerminal =
       index.data(Qt::UserRole + 1).toBool() || m_terminalCheckbox->isChecked();
+    bool launched = false;
     if (inTerminal) {
-        bool ok = TerminalLauncher::launchDetached(prog_args);
-        if (!ok) {
+        launched = TerminalLauncher::launchDetached(prog_args);
+        if (!launched) {
             QMessageBox::about(
               this, tr("Error"), tr("Unable to launch in terminal."));
         }
@@ -168,8 +237,18 @@ void AppLauncherWidget::launch(const QModelIndex& index)
         QFileInfo fi(tempFilePath);
         QString workingDir = fi.absolutePath();
         prog_args.removeAt(0); // strip program name out
-        QProcess::startDetached(app_name, prog_args, workingDir);
+        launched = QProcess::startDetached(app_name, prog_args, workingDir);
+        if (!launched) {
+            QMessageBox::about(
+              this, tr("Error"), tr("Unable to launch application."));
+        }
     }
+    if (!launched) {
+        removeTempFile();
+        return;
+    }
+    scheduleTempFileRemoval(tempFilePath, kCleanupDelayMs);
+    releaseTempFile();
     if (!m_keepOpen) {
         close();
     }

@@ -166,7 +166,7 @@ static QMap<class QString, QSharedPointer<ValueHandler>>
     // NOTE: If another tool size is added besides drawThickness and
     // drawFontSize, remember to update ConfigHandler::toolSize
     OPTION("copyOnDoubleClick"           ,Bool               ( false         )),
-    OPTION("uploadClientSecret"          ,String             ( "313baf0c7b4d3ff" )),
+    OPTION("uploadClientSecret"          ,String             ( ""               )),
     OPTION("showSelectionGeometry"       , BoundedInt        ( 0, 5, 4       )),
     OPTION("showSelectionGeometryHideTime", LowerBoundedInt  ( 0, 3000       )),
     OPTION("jpegQuality"                 , BoundedInt        ( 0,100,75      )),
@@ -274,6 +274,9 @@ ConfigHandler::ConfigHandler()
         QObject::connect(m_configWatcher.data(),
                          &QFileSystemWatcher::fileChanged,
                          [](const QString& fileName) {
+                             // A config change may fix (or introduce) an
+                             // error, so the cached validation is stale.
+                             m_configErrorsChecked = false;
                              emit getInstance()->fileChanged();
 
                              if (QFile(fileName).exists()) {
@@ -831,6 +834,23 @@ bool ConfigHandler::hasError() const
     return m_hasError;
 }
 
+/**
+ * @brief Return whether the config contains errors that still need resolving.
+ *
+ * The full validation suite is expensive, so it runs at most once per process.
+ * The file watcher clears the cache whenever the config file changes.
+ */
+bool ConfigHandler::hasUnresolvedConfigErrors()
+{
+    if (!m_configErrorsChecked) {
+        ConfigHandler config;
+        m_hasUnresolvedConfigErrors =
+          !config.checkUnrecognizedSettings() || !config.checkSemantics();
+        m_configErrorsChecked = true;
+    }
+    return m_hasUnresolvedConfigErrors;
+}
+
 /// Error message that can be used by other classes as well
 QString ConfigHandler::errorMessage() const
 {
@@ -915,5 +935,7 @@ QString ConfigHandler::baseName(const QString& key) const
 bool ConfigHandler::m_hasError = false;
 bool ConfigHandler::m_errorCheckPending = true;
 bool ConfigHandler::m_skipNextErrorCheck = false;
+bool ConfigHandler::m_configErrorsChecked = false;
+bool ConfigHandler::m_hasUnresolvedConfigErrors = false;
 
 QSharedPointer<QFileSystemWatcher> ConfigHandler::m_configWatcher;

@@ -199,6 +199,7 @@ public:
     void setErrorState(bool error) const;
     bool hasError() const;
     QString errorMessage() const;
+    static bool hasUnresolvedConfigErrors();
 
 signals:
     void error() const;
@@ -209,6 +210,7 @@ private:
     mutable QSettings m_settings;
 
     static bool m_hasError, m_errorCheckPending, m_skipNextErrorCheck;
+    static bool m_configErrorsChecked, m_hasUnresolvedConfigErrors;
     static QSharedPointer<QFileSystemWatcher> m_configWatcher;
 
     void ensureFileWatched() const;
