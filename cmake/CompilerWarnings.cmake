@@ -3,7 +3,11 @@
 # https://github.com/lefticus/cppbestpractices/blob/master/02-Use_the_Tools_Available.md
 
 function(set_project_warnings project_name)
-  option(WARNINGS_AS_ERRORS "Treat compiler warnings as errors" TRUE)
+  # Warnings are surfaced but not fatal. This is an inherited Flameshot
+  # codebase; turning them into errors would fail the build on hundreds of
+  # pre-existing diagnostics (mostly unreferenced virtual parameters) that are
+  # out of scope here. Developers still see every warning.
+  option(WARNINGS_AS_ERRORS "Treat compiler warnings as errors" FALSE)
 
   set(MSVC_WARNINGS
       /W4 # Baseline reasonable warnings

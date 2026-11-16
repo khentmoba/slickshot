@@ -65,6 +65,7 @@ void raiseAboveMenuBar(QWidget* widget)
 #include "core/qguiappcurrentscreen.h"
 #include "utils/abstractlogger.h"
 #include "utils/confighandler.h"
+#include "utils/geometryutils.h"
 #include "utils/screengrabber.h"
 #include "utils/screenshotsaver.h"
 #include "widgets/capture/capturewidget.h"
@@ -255,23 +256,27 @@ void Flameshot::screen(CaptureRequest req, const int screenNumber)
     }
 
     if (ok) {
-        QRect region = req.initialSelection();
-        if (region.isNull()) {
-            region = geometry;
-        } else {
-            QRect screenGeom = geometry;
-            screenGeom.moveTopLeft({ 0, 0 });
-            region = region.intersected(screenGeom);
-            p = p.copy(region);
+        QRect selection = geometry;
+        const QRect requested = req.initialSelection();
+        if (!requested.isNull()) {
+            const GeometryUtils::RegionMapping mapping =
+              GeometryUtils::mapRegionToScreen(requested, geometry, p);
+            if (mapping.valid) {
+                selection = mapping.globalLogical;
+                p = p.copy(mapping.localPixmap);
+            } else {
+                ok = false;
+            }
         }
-        if (req.tasks() & CaptureRequest::PIN) {
-            // change geometry for pin task
-            req.addPinTask(region);
+        if (ok) {
+            if (req.tasks() & CaptureRequest::PIN) {
+                req.addPinTask(selection);
+            }
+            exportCapture(p, selection, req);
+            return;
         }
-        exportCapture(p, geometry, req);
-    } else {
-        emit captureFailed();
     }
+    emit captureFailed();
 }
 
 void Flameshot::full(const CaptureRequest& req)
@@ -485,7 +490,7 @@ void Flameshot::requestCapture(const CaptureRequest& request)
 }
 
 void Flameshot::exportCapture(const QPixmap& capture,
-                              QRect& selection,
+                              const QRect& selection,
                               const CaptureRequest& req)
 {
     using CR = CaptureRequest;

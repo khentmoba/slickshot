@@ -151,7 +151,10 @@ void FlameshotDaemon::createPin(const QPixmap& capture, QRect geometry)
     auto kdsa = KDSingleApplication(QStringLiteral("org.flameshot.Flameshot"));
     stream << QStringLiteral("attachPin") << capture << geometry
            << capture.devicePixelRatio();
-    kdsa.sendMessage(data);
+    if (kdsa.sendMessage(data)) {
+        return;
+    }
+    createLocalPin(capture, geometry);
 #else
     stream << capture << geometry << capture.devicePixelRatio();
     QDBusMessage m = createMethodCall(QStringLiteral("attachPin"));
@@ -226,6 +229,21 @@ void FlameshotDaemon::copyToClipboard(const QString& text,
 bool FlameshotDaemon::isThisInstanceHostingWidgets()
 {
     return instance() && !instance()->m_widgets.isEmpty();
+}
+
+bool FlameshotDaemon::hasLocalPins()
+{
+    return !s_localPins.isEmpty();
+}
+
+void FlameshotDaemon::createLocalPin(const QPixmap& capture, QRect geometry)
+{
+    auto* pin = new PinWidget(capture, geometry);
+    s_localPins.append(pin);
+    QObject::connect(
+      pin, &QObject::destroyed, [pin]() { s_localPins.removeOne(pin); });
+    pin->show();
+    pin->activateWindow();
 }
 
 void FlameshotDaemon::sendTrayNotification(const QString& text,
@@ -579,3 +597,4 @@ void FlameshotDaemon::messageReceivedFromSecondaryInstance(
 
 // STATIC ATTRIBUTES
 FlameshotDaemon* FlameshotDaemon::m_instance = nullptr;
+QList<QWidget*> FlameshotDaemon::s_localPins;

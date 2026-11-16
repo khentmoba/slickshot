@@ -42,6 +42,7 @@ AppUpdateInstaller::AppUpdateInstaller(const AppUpdateInfo& info)
   , m_hash(QCryptographicHash::Sha256)
   , m_canceled(false)
   , m_writeError(false)
+  , m_redirectBlocked(false)
 {}
 
 AppUpdateInstaller::~AppUpdateInstaller()
@@ -84,12 +85,20 @@ void AppUpdateInstaller::downloadChecksum()
         const QString error = reply->errorString();
         reply->deleteLater();
 
+        if (m_redirectBlocked) {
+            fail(tr("The update was redirected to an untrusted server. The "
+                    "update was not installed."));
+            return;
+        }
         if (!ok) {
             fail(
               tr("Could not download the update checksum.\n\n%1").arg(error));
             return;
         }
-        m_expectedSha256 = AppUpdate::parseSha256(content);
+        // The checksum must describe the exact installer asset we are about to
+        // download, not some other file served alongside it.
+        const QString installerName = QUrl(m_info.installerUrl).fileName();
+        m_expectedSha256 = AppUpdate::parseSha256(content, installerName);
         if (m_expectedSha256.isEmpty()) {
             fail(tr(
               "The update checksum is invalid. The update was not installed."));
@@ -175,6 +184,12 @@ void AppUpdateInstaller::downloadInstaller()
             m_installerFile.reset();
         }
 
+        if (m_redirectBlocked) {
+            cleanupInstallerFile();
+            fail(tr("The update was redirected to an untrusted server. The "
+                    "update was not installed."));
+            return;
+        }
         if (m_writeError) {
             cleanupInstallerFile();
             fail(tr("Could not save the update to %1.\n\n%2")
@@ -247,6 +262,19 @@ QNetworkReply* AppUpdateInstaller::get(const QUrl& url)
     QNetworkRequest request(url);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::NoLessSafeRedirectPolicy);
-    m_reply = m_network->get(request);
-    return m_reply;
+    QNetworkReply* reply = m_network->get(request);
+    // NoLessSafeRedirectPolicy follows any HTTPS redirect. Re-apply the
+    // trusted-host rule on every hop so a GitHub URL cannot bounce the update
+    // to an arbitrary server that serves a matching checksum.
+    connect(reply,
+            &QNetworkReply::redirected,
+            this,
+            [this, reply](const QUrl& redirectUrl) {
+                if (!AppUpdate::isTrustedAssetUrl(redirectUrl.toString())) {
+                    m_redirectBlocked = true;
+                    reply->abort();
+                }
+            });
+    m_reply = reply;
+    return reply;
 }

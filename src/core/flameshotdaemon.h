@@ -9,6 +9,7 @@
 
 class QPixmap;
 class QRect;
+class QWidget;
 class QDBusMessage;
 class QDBusConnection;
 class TrayIcon;
@@ -33,6 +34,8 @@ public:
     static void copyToClipboard(const QString& text,
                                 const QString& notification = "");
     static bool isThisInstanceHostingWidgets();
+    static bool hasLocalPins();
+    static void createLocalPin(const QPixmap& capture, QRect geometry);
 
     void sendTrayNotification(
       const QString& text,
@@ -98,6 +101,7 @@ private:
 #endif
 
     static FlameshotDaemon* m_instance;
+    static QList<QWidget*> s_localPins;
 
 #if !(defined(Q_OS_MACOS) || defined(Q_OS_WIN))
     friend class FlameshotDBusAdapter;

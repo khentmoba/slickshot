@@ -92,5 +92,19 @@ Section "un.Uninstall"
 
   Delete "$SMPROGRAMS\${APP_NAME}.lnk"
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
+
+  ; Undo the Windows integration the app turns on. Leaving these behind would
+  ; keep pointing Windows at a SlickShot copy that no longer exists.
+  DeleteRegValue HKCU "Control Panel\Keyboard" "PrintScreenKeyForSnippingEnabled"
+  DeleteRegKey HKCU "Software\Classes\ms-screenclip"
+  DeleteRegKey HKCU "Software\Classes\SlickShot.ms-screenclip"
+  DeleteRegKey HKCU "Software\SlickShot"
+  DeleteRegValue HKCU "Software\RegisteredApplications" "SlickShot"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\SnippingTool.exe"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\ScreenClippingHost.exe"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\flameshot.exe"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "SlickShot"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Flameshot"
+
   RMDir /r "$INSTDIR"
 SectionEnd

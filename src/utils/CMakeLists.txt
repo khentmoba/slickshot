@@ -3,6 +3,7 @@ target_sources(
   flameshot_lib
   PRIVATE abstractlogger.h
           filenamehandler.h
+          geometryutils.h
           screengrabber.h
           systemnotification.h
           valuehandler.h
@@ -15,6 +16,7 @@ target_sources(
   flameshot_lib
   PRIVATE abstractlogger.cpp
           filenamehandler.cpp
+          geometryutils.cpp
           screengrabber.cpp
           monitorpreview.cpp
           confighandler.cpp

@@ -24,6 +24,7 @@
 #include <QWidget>
 
 #include "config/shortcutswidget.h"
+#include "core/flameshotdaemon.h"
 #include "tools/arrow/arrowtool.h"
 #include "tools/capturecontext.h"
 #include "tools/capturetool.h"
@@ -33,6 +34,7 @@
 #include "tools/rectangle/rectangletool.h"
 #include "utils/appupdate.h"
 #include "utils/filenamehandler.h"
+#include "utils/geometryutils.h"
 #include "utils/history.h"
 #include "utils/screengrabber.h"
 #include "utils/screenshotsaver.h"
@@ -55,6 +57,7 @@ private slots:
     void initTestCase();
     void testAppUpdateReleaseInfo();
     void testAppUpdateSha256();
+    void testAppUpdateTrustedHosts();
     void testAppUpdateInstallScriptAndEncode();
     void testAppUpdateCanInstallInPlaceForPaths();
     void testFileNameHandlerParseFilename();
@@ -64,6 +67,8 @@ private slots:
     void testSemanticVersionCompare();
     void testSnippingToolCommandMatch();
     void testMultiMonitorPhysicalRects();
+    void testRegionMappingUsesScreenOriginAndDpr();
+    void testCreatePinFallsBackToLocalWidget();
     void testCaptureToolButtonCheckableState();
     void testButtonHandlerMultiRowHitTesting();
     void testButtonHandlerContainsSingleRow();
@@ -178,6 +183,45 @@ void SlickShotTests::testAppUpdateSha256()
       QString());
     QCOMPARE(AppUpdate::parseSha256(QLatin1Char('\n') + valid + "  setup.exe"),
              QString());
+
+    // When an expected file name is supplied, the checksum must describe that
+    // exact asset. Directory prefixes, case, the '*' binary marker and CRLF
+    // endings are all tolerated; a different file name is rejected.
+    const QString asset = QStringLiteral("SlickShot-0.2.0-win64-setup.exe");
+    QCOMPARE(AppUpdate::parseSha256(valid + " *" + asset, asset),
+             valid.toLower());
+    QCOMPARE(AppUpdate::parseSha256(
+               "\\" + valid + " *releases\\" + asset + "\r\n", asset),
+             valid.toLower());
+    QCOMPARE(AppUpdate::parseSha256(valid + "  " + asset, asset.toUpper()),
+             valid.toLower());
+    QCOMPARE(AppUpdate::parseSha256(valid + "  other.exe", asset), QString());
+    QCOMPARE(AppUpdate::parseSha256(valid + "  " + asset + ".old", asset),
+             QString());
+}
+
+void SlickShotTests::testAppUpdateTrustedHosts()
+{
+    // The redirect guard reuses isTrustedAssetUrl on every hop, so the trusted
+    // set is the policy that matters for both the initial URL and redirects.
+    QVERIFY(AppUpdate::isTrustedAssetUrl(
+      QStringLiteral("https://github.com/o/r/releases/download/v1/a.exe")));
+    QVERIFY(AppUpdate::isTrustedAssetUrl(
+      QStringLiteral("https://objects.githubusercontent.com/asset?token=1")));
+    QVERIFY(AppUpdate::isTrustedAssetUrl(
+      QStringLiteral("https://github-releases.githubusercontent.com/asset")));
+    QVERIFY(AppUpdate::isTrustedAssetUrl(
+      QStringLiteral("https://release-assets.githubusercontent.com/asset")));
+
+    // Arbitrary hosts, including lookalikes and plain HTTP, are never trusted
+    // as a download or redirect target.
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(
+      QStringLiteral("https://example.com/SlickShot-setup.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(
+      QStringLiteral("https://github.com.evil.test/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(
+      QStringLiteral("http://objects.githubusercontent.com/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(QStringLiteral("not a url")));
 }
 
 void SlickShotTests::testAppUpdateInstallScriptAndEncode()
@@ -477,6 +521,47 @@ void SlickShotTests::testMultiMonitorPhysicalRects()
         QCOMPARE(phys[1], QRect(0, 0, 1920, 1080));
         QCOMPARE(phys[0], QRect(1920, 0, 3200, 1800));
     }
+}
+
+void SlickShotTests::testRegionMappingUsesScreenOriginAndDpr()
+{
+    QPixmap screenPixmap(2880, 1620);
+    screenPixmap.setDevicePixelRatio(1.5);
+
+    const QRect screen(1920, 0, 1920, 1080);
+    const QRect requested(2000, 100, 200, 100);
+    const GeometryUtils::RegionMapping mapping =
+      GeometryUtils::mapRegionToScreen(requested, screen, screenPixmap);
+
+    QVERIFY(mapping.valid);
+    QCOMPARE(mapping.localLogical, QRect(80, 100, 200, 100));
+    QCOMPARE(mapping.localPixmap, QRect(120, 150, 300, 150));
+    QCOMPARE(mapping.globalLogical, requested);
+
+    const GeometryUtils::RegionMapping outside =
+      GeometryUtils::mapRegionToScreen(
+        QRect(0, 0, 100, 100), screen, screenPixmap);
+    QVERIFY(!outside.valid);
+}
+
+void SlickShotTests::testCreatePinFallsBackToLocalWidget()
+{
+#if defined(Q_OS_WIN)
+    QPixmap pixmap(8, 8);
+    pixmap.fill(Qt::red);
+    FlameshotDaemon::createLocalPin(pixmap, QRect(20, 20, 8, 8));
+    QVERIFY(FlameshotDaemon::hasLocalPins());
+
+    const QList<QWidget*> windows = qApp->topLevelWidgets();
+    for (QWidget* window : windows) {
+        if (window->windowTitle() == QLatin1String("slickshot-pin")) {
+            window->close();
+        }
+    }
+    QTRY_VERIFY_WITH_TIMEOUT(!FlameshotDaemon::hasLocalPins(), 1000);
+#else
+    QSKIP("Local pin fallback is used on Windows with KDSingleApplication");
+#endif
 }
 
 void SlickShotTests::testCaptureToolButtonCheckableState()
