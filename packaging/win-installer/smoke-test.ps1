@@ -43,6 +43,49 @@ function Assert-Check([bool]$Condition, [string]$Message) {
     Write-Host "PASS: $Message"
 }
 
+$script:IntegrationKeys = @(
+    'HKCU:\Software\Classes\ms-screenclip',
+    'HKCU:\Software\Classes\SlickShot.ms-screenclip',
+    'HKCU:\Software\SlickShot',
+    'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\SnippingTool.exe',
+    'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\ScreenClippingHost.exe',
+    'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\flameshot.exe'
+)
+
+$script:IntegrationValues = @(
+    @{ Path = 'HKCU:\Control Panel\Keyboard'; Name = 'PrintScreenKeyForSnippingEnabled' },
+    @{ Path = 'HKCU:\Software\RegisteredApplications'; Name = 'SlickShot' },
+    @{ Path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'; Name = 'SlickShot' },
+    @{ Path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'; Name = 'Flameshot' }
+)
+
+function Set-WindowsIntegrationMarkers {
+    if ($env:CI -ne 'true') {
+        Write-Host 'SKIP: integration registry markers only run in CI'
+        return
+    }
+    foreach ($key in $script:IntegrationKeys) {
+        New-Item -Path $key -Force | Out-Null
+        New-ItemProperty -Path $key -Name 'SlickShotSmokeTest' -Value 'present' -PropertyType String -Force | Out-Null
+    }
+    foreach ($value in $script:IntegrationValues) {
+        New-Item -Path $value.Path -Force | Out-Null
+        New-ItemProperty -Path $value.Path -Name $value.Name -Value 'slickshot-smoke' -PropertyType String -Force | Out-Null
+    }
+}
+
+function Assert-WindowsIntegrationRemoved {
+    if ($env:CI -ne 'true') { return }
+    foreach ($key in $script:IntegrationKeys) {
+        Assert-Check (-not (Test-Path -LiteralPath $key)) "registry key removed: $key"
+    }
+    foreach ($value in $script:IntegrationValues) {
+        $item = Get-ItemProperty -LiteralPath $value.Path -ErrorAction SilentlyContinue
+        $present = $null -ne $item -and $null -ne $item.PSObject.Properties[$value.Name]
+        Assert-Check (-not $present) "registry value removed: $($value.Name)"
+    }
+}
+
 function Test-PortableChecksum([string]$Zip) {
     $sidecar = "$Zip.sha256sum"
     Assert-Check (Test-Path -LiteralPath $Zip) 'portable zip exists'
@@ -139,6 +182,9 @@ function Test-UninstallRefusedWhileRunning {
         Assert-Check (Test-Path -LiteralPath (Join-Path $InstallDir 'uninstall.exe')) 'refused uninstall left the uninstaller'
         Assert-Check (Test-Path -LiteralPath $UninstallKey) 'refused uninstall left the registry entry'
         Assert-Check (Test-Path -LiteralPath $ShortcutPath) 'refused uninstall left the Start Menu shortcut'
+        if ($env:CI -eq 'true') {
+            Assert-Check (Test-Path -LiteralPath 'HKCU:\Software\Classes\ms-screenclip') 'refused uninstall left Snipping Tool registration'
+        }
     } finally {
         $lock.Dispose()
     }
@@ -166,6 +212,7 @@ function Test-InstallerRoundTrip {
     Assert-Check (Test-Path -LiteralPath $configFile) 'config file still exists after the upgrade install'
     Assert-Check ((Get-Content -LiteralPath $configFile -Raw) -match [regex]::Escape($marker)) 'config marker survived the upgrade install'
 
+    Set-WindowsIntegrationMarkers
     Test-UninstallRefusedWhileRunning
 
     $null = Start-RegisteredUninstall
@@ -177,6 +224,7 @@ function Test-InstallerRoundTrip {
     Write-Host "PASS: uninstall removed $InstallDir"
     Assert-Check (-not (Test-Path -LiteralPath $UninstallKey)) 'registry entry removed'
     Assert-Check (-not (Test-Path -LiteralPath $ShortcutPath)) 'Start Menu shortcut removed'
+    Assert-WindowsIntegrationRemoved
 
     # Do not leave a marker behind in an isolated developer config directory.
     if (-not $configExisted) {

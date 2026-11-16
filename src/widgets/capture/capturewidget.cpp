@@ -337,17 +337,11 @@ CaptureWidget::~CaptureWidget()
     }
 #endif
     if (m_captureDone) {
-        auto lastRegion = m_selection->geometry();
-        const qreal scale = m_context.screenshot.devicePixelRatio();
-        lastRegion.setTop(lastRegion.top() * scale);
-        lastRegion.setBottom(lastRegion.bottom() * scale);
-        lastRegion.setLeft(lastRegion.left() * scale);
-        lastRegion.setRight(lastRegion.right() * scale);
-        setLastRegion(lastRegion);
-        QRect geometry(m_context.selection);
-        geometry.setTopLeft(geometry.topLeft() + m_context.widgetOffset);
+        const QRect selection =
+          m_selection->geometry().translated(m_context.widgetOffset);
+        setLastRegion(selection);
         Flameshot::instance()->exportCapture(
-          pixmap(), geometry, m_context.request);
+          pixmap(), selection, m_context.request);
     } else {
         emit Flameshot::instance()->captureFailed();
     }
@@ -1417,11 +1411,9 @@ void CaptureWidget::initSelection()
         }
     });
     if (!initialSelection.isNull()) {
-        const qreal scale = m_context.screenshot.devicePixelRatio();
-        initialSelection.setTop(initialSelection.top() / scale);
-        initialSelection.setBottom(initialSelection.bottom() / scale);
-        initialSelection.setLeft(initialSelection.left() / scale);
-        initialSelection.setRight(initialSelection.right() / scale);
+        m_context.widgetOffset = mapToGlobal(QPoint(0, 0));
+        initialSelection.translate(-m_context.widgetOffset.x(),
+                                   -m_context.widgetOffset.y());
     }
     m_selection->setGeometry(initialSelection);
     m_selection->setVisible(!initialSelection.isNull());

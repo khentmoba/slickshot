@@ -76,12 +76,15 @@ int requestCaptureAndWait(const CaptureRequest& req)
     QObject::connect(flameshot, &Flameshot::captureTaken, [&](const QPixmap&) {
 #if defined(Q_OS_MACOS)
         // Only useful on MacOS because each instance hosts its own widgets
-        if (!FlameshotDaemon::isThisInstanceHostingWidgets()) {
+        if (!FlameshotDaemon::isThisInstanceHostingWidgets() &&
+            !FlameshotDaemon::hasLocalPins()) {
             qApp->exit(0);
         }
 #else
         // if this instance is not daemon, make sure it exit after caputre finish
-        if (FlameshotDaemon::instance() == nullptr && !Flameshot::instance()->haveExternalWidget()) {
+        if (FlameshotDaemon::instance() == nullptr &&
+            !Flameshot::instance()->haveExternalWidget() &&
+            !FlameshotDaemon::hasLocalPins()) {
             qApp->exit(E_OK);
         }
 #endif

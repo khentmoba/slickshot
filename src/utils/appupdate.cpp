@@ -130,21 +130,37 @@ bool AppUpdate::canInstallInPlace(const AppUpdateInfo& info)
 #endif
 }
 
-QString AppUpdate::parseSha256(const QString& checksumFile)
+QString AppUpdate::parseSha256(const QString& checksumFile,
+                               const QString& expectedFileName)
 {
     // sha256sum writes "<digest> *<name>" (the '*' marks binary mode), with a
     // leading '\' when the file name contains backslashes. Accept only that
-    // exact shape: 64 hex digits followed by spaces/tabs and an optional '*'.
-    // Allow a single leading UTF-8 BOM, which is otherwise not part of the
-    // line.
+    // exact shape: 64 hex digits followed by spaces/tabs, an optional '*',
+    // then the file name. Allow a single leading UTF-8 BOM, which is otherwise
+    // not part of the line.
     QString line = checksumFile;
     if (line.startsWith(QChar(0xFEFF))) {
         line.remove(0, 1);
     }
     static const QRegularExpression digest(
-      QStringLiteral("^\\\\?([0-9a-fA-F]{64})[ \\t]+\\*?"));
+      QStringLiteral("^\\\\?([0-9a-fA-F]{64})[ \\t]+\\*?(.+)$"));
     const QRegularExpressionMatch match = digest.match(line);
-    return match.hasMatch() ? match.captured(1).toLower() : QString();
+    if (!match.hasMatch()) {
+        return QString();
+    }
+
+    if (!expectedFileName.isEmpty()) {
+        // Only the base name matters: sha256sum may record a path prefix, and
+        // Windows paths may use either separator.
+        const QString recorded = match.captured(2);
+        const QString recordedBase =
+          recorded.section(QLatin1Char('/'), -1).section(QLatin1Char('\\'), -1);
+        if (recordedBase.trimmed().compare(expectedFileName,
+                                           Qt::CaseInsensitive) != 0) {
+            return QString();
+        }
+    }
+    return match.captured(1).toLower();
 }
 
 QString AppUpdate::installScript(qint64 pid,

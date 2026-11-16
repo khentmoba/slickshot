@@ -34,8 +34,12 @@ bool canInstallInPlaceForPaths(const AppUpdateInfo& info,
 bool canInstallInPlace(const AppUpdateInfo& info);
 
 // Returns the first 64-hex-digit digest of a sha256sum file, lowercase, or
-// empty.
-QString parseSha256(const QString& checksumFile);
+// empty. When expectedFileName is not empty, the file name recorded in the
+// checksum line must match it (ignoring any directory prefix and case) or an
+// empty string is returned. This stops a checksum for one asset from being
+// used to validate a different download.
+QString parseSha256(const QString& checksumFile,
+                    const QString& expectedFileName = QString());
 
 // PowerShell that waits for pid to exit, checks installerPath against
 // expectedSha256 while holding the file open so it cannot change, runs the

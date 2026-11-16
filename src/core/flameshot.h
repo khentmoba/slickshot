@@ -77,7 +77,7 @@ signals:
 public slots:
     void requestCapture(const CaptureRequest& request);
     void exportCapture(const QPixmap& p,
-                       QRect& selection,
+                       const QRect& selection,
                        const CaptureRequest& req);
 
 private:

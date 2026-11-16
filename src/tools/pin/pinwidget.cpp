@@ -60,29 +60,7 @@ PinWidget::PinWidget(const QPixmap& pixmap,
       QKeySequence(closePinnedCaptureShortcut), this, SLOT(close()));
     new QShortcut(Qt::Key_Escape, this, SLOT(close()));
 
-    qreal devicePixelRatio = 1;
-    QScreen* currentScreen = QGuiAppCurrentScreen().currentScreen();
-    if (currentScreen != nullptr) {
-        devicePixelRatio = currentScreen->devicePixelRatio();
-    }
-
-    const int margin =
-      static_cast<int>(static_cast<double>(MARGIN) * devicePixelRatio);
-    QRect adjusted_pos = geometry + QMargins(margin, margin, margin, margin);
-    setGeometry(adjusted_pos);
-
-    if (currentScreen != nullptr) {
-        QPoint topLeft = currentScreen->geometry().topLeft();
-        adjusted_pos.setX((adjusted_pos.x() - topLeft.x()) / devicePixelRatio +
-                          topLeft.x());
-
-        adjusted_pos.setY((adjusted_pos.y() - topLeft.y()) / devicePixelRatio +
-                          topLeft.y());
-        adjusted_pos.setWidth(adjusted_pos.size().width() / devicePixelRatio);
-        adjusted_pos.setHeight(adjusted_pos.size().height() / devicePixelRatio);
-        resize(0, 0);
-        move(adjusted_pos.x(), adjusted_pos.y());
-    }
+    setGeometry(geometry.adjusted(-MARGIN, -MARGIN, MARGIN, MARGIN));
 
     grabGesture(Qt::PinchGesture);
 

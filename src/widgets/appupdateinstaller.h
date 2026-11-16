@@ -46,4 +46,5 @@ private:
     QString m_installerPath;
     bool m_canceled;
     bool m_writeError;
+    bool m_redirectBlocked;
 };
