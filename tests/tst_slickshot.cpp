@@ -1169,8 +1169,16 @@ void SlickShotTests::testWindowsHdrConvertScRgbToSdr()
     // Test representative FP16 bit patterns across two SDR white levels and
     // with row stride > width * 8 bytes.
     const std::vector<float> samples = {
-        0.0f,  0.001f, 0.05f, 0.5f, 1.0f, 2.5f,
-        5.0f,  10.0f,  -0.5f, std::numeric_limits<float>::infinity(),
+        0.0f,
+        0.001f,
+        0.05f,
+        0.5f,
+        1.0f,
+        2.5f,
+        5.0f,
+        10.0f,
+        -0.5f,
+        std::numeric_limits<float>::infinity(),
         -std::numeric_limits<float>::infinity(),
         std::numeric_limits<float>::quiet_NaN()
     };
@@ -1180,7 +1188,8 @@ void SlickShotTests::testWindowsHdrConvertScRgbToSdr()
     std::vector<uchar> buffer(static_cast<size_t>(bytesPerLine) * height, 0xAB);
 
     for (int y = 0; y < height; ++y) {
-        auto* row = reinterpret_cast<qfloat16*>(buffer.data() + y * bytesPerLine);
+        auto* row =
+          reinterpret_cast<qfloat16*>(buffer.data() + y * bytesPerLine);
         for (int x = 0; x < width; ++x) {
             const float f = samples[(x + y) % samples.size()];
             const qfloat16 h(f);
