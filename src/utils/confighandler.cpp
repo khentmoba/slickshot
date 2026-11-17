@@ -862,7 +862,9 @@ void ConfigHandler::ensureFileWatched() const
 {
     QFile file(m_settings.fileName());
     if (!file.exists()) {
-        if (file.open(QFileDevice::WriteOnly)) {
+        // Append mode creates the file without truncating it if a concurrent
+        // writer created it between exists() and open() (a 0-byte config).
+        if (file.open(QFileDevice::WriteOnly | QFileDevice::Append)) {
             file.close();
         }
     }

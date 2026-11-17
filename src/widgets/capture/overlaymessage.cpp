@@ -40,12 +40,24 @@ void OverlayMessage::init(QWidget* parent, const QRect& targetArea)
     new OverlayMessage(parent, targetArea);
 }
 
+OverlayMessage::~OverlayMessage()
+{
+    // The static pointer must not outlive the singleton widget. Otherwise the
+    // static helpers below can call into a destroyed QLabel (use-after-free).
+    if (m_instance == this) {
+        m_instance = nullptr;
+    }
+}
+
 /**
  * @brief Push a message to the message stack.
  * @param msg Message text formatted as rich text
  */
 void OverlayMessage::push(const QString& msg)
 {
+    if (m_instance == nullptr) {
+        return;
+    }
     m_instance->m_messageStack.push(msg);
     m_instance->setText(m_instance->m_messageStack.top());
     setVisibility(true);
@@ -53,6 +65,9 @@ void OverlayMessage::push(const QString& msg)
 
 void OverlayMessage::pop()
 {
+    if (m_instance == nullptr) {
+        return;
+    }
     if (m_instance->m_messageStack.size() == 1 && m_instance->isHidden()) {
         return;
     }
@@ -66,6 +81,9 @@ void OverlayMessage::pop()
 
 void OverlayMessage::setVisibility(bool visible)
 {
+    if (m_instance == nullptr) {
+        return;
+    }
     if (visible) {
         m_instance->updateGeometry();
     }

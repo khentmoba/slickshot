@@ -17,6 +17,7 @@ class ConfigWindow : public QWidget
     Q_OBJECT
 public:
     explicit ConfigWindow(QWidget* parent = nullptr);
+    ~ConfigWindow() override;
 
 signals:
     void updateChildren();
@@ -24,6 +25,7 @@ signals:
 protected:
     void keyPressEvent(QKeyEvent*) override;
     void changeEvent(QEvent* event) override;
+    bool eventFilter(QObject* obj, QEvent* event) override;
 
 private:
     void applyTheme();
