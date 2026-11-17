@@ -15,6 +15,9 @@ public:
 
     QColor color();
 
+    // Maps a global logical cursor position to a pixel in the screenshot.
+    QPoint physicalPixelAt(const QPoint& globalPos) const;
+
 signals:
     void colorUpdated(const QColor& color);
     void colorGrabbed(const QColor& color);

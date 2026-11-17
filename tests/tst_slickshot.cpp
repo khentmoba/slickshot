@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QComboBox>
 #include <QCursor>
 #include <QDir>
 #include <QFile>
@@ -22,15 +23,19 @@
 #include <QTemporaryFile>
 #include <QTest>
 #include <QVersionNumber>
+#include <QWheelEvent>
 #include <QWidget>
 
+#include "config/configwindow.h"
 #include "config/shortcutswidget.h"
 #include "core/flameshotdaemon.h"
+#include "core/qguiappcurrentscreen.h"
 #include "tools/arrow/arrowtool.h"
 #include "tools/capturecontext.h"
 #include "tools/capturetool.h"
 #include "tools/invert/inverttool.h"
 #include "tools/launcher/applauncherwidget.h"
+#include "tools/pin/pinwidget.h"
 #include "tools/pixelate/pixelatetool.h"
 #include "tools/rectangle/rectangletool.h"
 #include "utils/appupdate.h"
@@ -46,7 +51,9 @@
 #include "widgets/capture/capturetoolobjects.h"
 #include "widgets/capture/capturewidget.h"
 #include "widgets/capture/magnifierwidget.h"
+#include "widgets/capture/overlaymessage.h"
 #include "widgets/capture/selectionwidget.h"
+#include "widgets/panel/colorgrabwidget.h"
 #if !defined(DISABLE_UPDATE_CHECKER)
 #include "widgets/updatenotificationwidget.h"
 #endif
@@ -85,6 +92,10 @@ private slots:
     void testGridTileMatchesPerPaintDots();
     void testGridTileCachePromotion();
     void testMagnifierDrawsWithinReach();
+    void testOverlayMessageStaticHelpersSurviveDestruction();
+    void testColorGrabMapsLogicalCursorToDevicePixel();
+    void testConfigWheelLeavesUnfocusedComboUnchanged();
+    void testPinWidgetAcceptsTouchEvents();
 #if !defined(DISABLE_UPDATE_CHECKER)
     void testUpdateNotificationWidget();
 #endif
@@ -1017,6 +1028,76 @@ void SlickShotTests::testSaveToClipboardMimeRoundTrip()
     const QImage jpeg =
       QImage::fromData(jpegData->data(QStringLiteral("image/jpeg")), "JPEG");
     QCOMPARE(jpeg.size(), QSize(64, 48));
+}
+
+void SlickShotTests::testOverlayMessageStaticHelpersSurviveDestruction()
+{
+    QWidget parent;
+    OverlayMessage::init(&parent, QRect(0, 0, 100, 100));
+    QVERIFY(OverlayMessage::instance() != nullptr);
+
+    delete OverlayMessage::instance();
+    QVERIFY(OverlayMessage::instance() == nullptr);
+
+    // These used to dereference a dangling static pointer after destruction.
+    OverlayMessage::push(QStringLiteral("message"));
+    OverlayMessage::pop();
+    OverlayMessage::setVisibility(false);
+    QVERIFY(OverlayMessage::instance() == nullptr);
+}
+
+void SlickShotTests::testColorGrabMapsLogicalCursorToDevicePixel()
+{
+    QScreen* screen = QGuiAppCurrentScreen().currentScreen();
+    QVERIFY(screen != nullptr);
+
+    QPixmap pixmap(1000, 1000);
+    pixmap.setDevicePixelRatio(2.0);
+    ColorGrabWidget grabber(&pixmap);
+
+    const QPoint logical = screen->geometry().topLeft() + QPoint(100, 100);
+    const QPoint mapped = grabber.physicalPixelAt(logical);
+    const qreal dpr = screen->devicePixelRatio();
+    QCOMPARE(mapped, QPoint(qRound(100 * dpr), qRound(100 * dpr)));
+}
+
+void SlickShotTests::testConfigWheelLeavesUnfocusedComboUnchanged()
+{
+    ConfigWindow window;
+    window.resize(320, 200);
+    window.show();
+
+    QComboBox* combo = nullptr;
+    const auto combos = window.findChildren<QComboBox*>();
+    for (QComboBox* candidate : combos) {
+        if (candidate->count() > 1) {
+            combo = candidate;
+            break;
+        }
+    }
+    QVERIFY(combo != nullptr);
+
+    combo->clearFocus();
+    const int before = combo->currentIndex();
+    QWheelEvent wheel(QPointF(0, 0),
+                      QPointF(0, 0),
+                      QPoint(),
+                      QPoint(0, 120),
+                      Qt::NoButton,
+                      Qt::NoModifier,
+                      Qt::NoScrollPhase,
+                      false);
+    QApplication::sendEvent(combo, &wheel);
+    QCOMPARE(combo->currentIndex(), before);
+    // The filter ignores the wheel, so it must not stay accepted.
+    QVERIFY(!wheel.isAccepted());
+}
+
+void SlickShotTests::testPinWidgetAcceptsTouchEvents()
+{
+    QPixmap pixmap(40, 40);
+    PinWidget pin(pixmap, QRect(0, 0, 40, 40));
+    QVERIFY(pin.testAttribute(Qt::WA_AcceptTouchEvents));
 }
 
 #if !defined(DISABLE_UPDATE_CHECKER)

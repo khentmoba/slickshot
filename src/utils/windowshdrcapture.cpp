@@ -3,8 +3,8 @@
 
 #include "windowshdrcapture.h"
 
+#include <QDebug>
 #include <QElapsedTimer>
-#include <QFloat16>
 #include <QImage>
 #include <QScreen>
 
@@ -12,18 +12,22 @@
 #include <QDebug>
 #endif
 
-#include <qt_windows.h>
+#include <QtCore/qfloat16.h>
 
-#include <d3d11.h>
-#include <dxgi1_6.h>
-#include <wrl/client.h>
-
+#include <algorithm>
 #include <cmath>
 #include <cwchar>
 #include <iterator>
 #include <map>
 #include <mutex>
 #include <vector>
+
+#include <d3d11.h>
+#include <dxgi.h>
+#include <dxgi1_5.h>
+#include <dxgi1_6.h>
+#include <windows.h>
+#include <wrl.h>
 
 using Microsoft::WRL::ComPtr;
 
@@ -39,8 +43,8 @@ void logFallback(const char* reason, HRESULT hr = S_OK)
 {
 #ifdef FLAMESHOT_DEBUG_CAPTURE
     qDebug().nospace() << "Windows HDR capture failed, using GDI: " << reason
-                       << " (hr=0x" << Qt::hex << static_cast<quint32>(hr)
-                       << ")";
+                       << " (hr=0x" << Qt::hex << static_cast<quint64>(hr)
+                       << Qt::dec;
 #else
     Q_UNUSED(reason)
     Q_UNUSED(hr)
@@ -67,7 +71,7 @@ LONG getDeviceInfo(T& info,
                    UINT32 id)
 {
     info.header.type = type;
-    info.header.size = static_cast<UINT32>(sizeof(T));
+    info.header.size = static_cast<LONG>(sizeof(T));
     info.header.adapterId = adapterId;
     info.header.id = id;
     return DisplayConfigGetDeviceInfo(&info.header);
@@ -280,14 +284,14 @@ QImage convertScRgbToSdr(const uchar* bits,
     }
 
     const double sdrWhiteScale = sdrWhiteNits / kScRgbWhiteNits;
-    const auto inverseSdrWhiteScale = static_cast<float>(1.0 / sdrWhiteScale);
+    const float inverseSdrWhiteScale = static_cast<float>(1.0 / sdrWhiteScale);
     const quint8* srgb = srgbEncodingTable().data();
     // Clamps to [0, 1]: negative (out of gamut) values and NaN become 0,
-    // values above SDR white (including infinity) become 1
+    // values above SDR white (including infinity) become 1.
     const auto encode = [inverseSdrWhiteScale, srgb](float scRgb) {
         const float normalized = scRgb * inverseSdrWhiteScale;
         const float linear = normalized > 0.0f ? qMin(normalized, 1.0f) : 0.0f;
-        return srgb[static_cast<size_t>(linear * 65535.0f + 0.5f)];
+        return srgb[static_cast<int>(linear * 65535.0f + 0.5f)];
     };
 
     std::vector<float> linearRgb(static_cast<size_t>(width) * 4);
@@ -296,7 +300,7 @@ QImage convertScRgbToSdr(const uchar* bits,
         qFloatFromFloat16(
           linearRgb.data(),
           reinterpret_cast<const qfloat16*>(bits + y * bytesPerLine),
-          static_cast<qsizetype>(linearRgb.size()));
+          linearRgb.size());
         auto* out = reinterpret_cast<QRgb*>(image.scanLine(y));
         for (int x = 0; x < width; ++x) {
             const float* pixel = &linearRgb[static_cast<size_t>(x) * 4];

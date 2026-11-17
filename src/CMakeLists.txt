@@ -310,11 +310,12 @@ if (WIN32)
             flameshot_lib
             PUBLIC
             qhotkey
+            d3d11
+            dxgi
     )
     target_link_libraries(
             flameshot
             qhotkey
-            # Desktop Duplication capture of HDR monitors
             d3d11
             dxgi
     )

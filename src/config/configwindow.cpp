@@ -12,7 +12,9 @@
 #include "utils/globalvalues.h"
 #include "utils/pathinfo.h"
 
+#include <QAbstractSpinBox>
 #include <QApplication>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QEvent>
 #include <QFileSystemWatcher>
@@ -77,6 +79,10 @@ ConfigWindow::ConfigWindow(QWidget* parent)
     shortcutsLayout->addWidget(m_shortcuts);
     m_tabWidget->addTab(m_shortcutsTab, tr("Shortcuts"));
 
+    // Scrolling the settings page must not silently change a value when the
+    // wheel happens to be over a combo box or spin box that is not focused.
+    qApp->installEventFilter(this);
+
     applyTheme();
 
     // connect update sigslots
@@ -98,6 +104,28 @@ ConfigWindow::ConfigWindow(QWidget* parent)
     initErrorIndicator(m_filenameEditorTab, m_filenameEditor);
     initErrorIndicator(m_generalConfigTab, m_generalConfig);
     initErrorIndicator(m_shortcutsTab, m_shortcuts);
+}
+
+ConfigWindow::~ConfigWindow()
+{
+    qApp->removeEventFilter(this);
+}
+
+bool ConfigWindow::eventFilter(QObject* obj, QEvent* event)
+{
+    if (event->type() == QEvent::Wheel) {
+        auto* widget = qobject_cast<QWidget*>(obj);
+        const bool isValueWidget =
+          qobject_cast<QComboBox*>(obj) != nullptr ||
+          qobject_cast<QAbstractSpinBox*>(obj) != nullptr;
+        if (widget != nullptr && isValueWidget && !widget->hasFocus() &&
+            isAncestorOf(widget)) {
+            // Scrolling the page must not change an unfocused value widget.
+            event->ignore();
+            return true;
+        }
+    }
+    return QWidget::eventFilter(obj, event);
 }
 
 void ConfigWindow::applyTheme()

@@ -102,8 +102,10 @@ bool ColorGrabWidget::eventFilter(QObject*, QEvent* event)
 
         // Hide overlay message when cursor is over it
         OverlayMessage* overlayMsg = OverlayMessage::instance();
-        overlayMsg->setVisibility(
-          !overlayMsg->geometry().contains(cursorPos()));
+        if (overlayMsg != nullptr) {
+            overlayMsg->setVisibility(
+              !overlayMsg->geometry().contains(cursorPos()));
+        }
 
         m_color = getColorAtPoint(cursorPos());
         emit colorUpdated(m_color);
@@ -155,6 +157,31 @@ QPoint ColorGrabWidget::cursorPos() const
     return QCursor::pos(QGuiAppCurrentScreen().currentScreen());
 }
 
+/// @note The screenshot is in device pixels while the cursor is in logical
+/// coordinates. Without this conversion the sampled color is off by the
+/// scaling factor (e.g. at 200% the color of 50,50 is returned for 100,100).
+QPoint ColorGrabWidget::physicalPixelAt(const QPoint& globalPos) const
+{
+    QPoint point = globalPos;
+    if (QScreen* currentScreen = QGuiAppCurrentScreen().currentScreen()) {
+        const qreal dpr = currentScreen->devicePixelRatio();
+        if (dpr > 0.0) {
+            point =
+              QPoint((globalPos.x() - currentScreen->geometry().x()) * dpr,
+                     (globalPos.y() - currentScreen->geometry().y()) * dpr);
+        }
+    }
+    // QPixmap::copy() takes device pixels; clamp to the screenshot's physical
+    // extent so edge cursors cannot sample outside the captured image.
+    // QPixmap::size() is already in device pixels.
+    const QSize physicalSize = m_pixmap->size();
+    if (!physicalSize.isEmpty()) {
+        point.setX(qBound(0, point.x(), physicalSize.width() - 1));
+        point.setY(qBound(0, point.y(), physicalSize.height() - 1));
+    }
+    return point;
+}
+
 /// @note The point is in screen coordinates.
 QColor ColorGrabWidget::getColorAtPoint(const QPoint& p) const
 {
@@ -164,16 +191,7 @@ QColor ColorGrabWidget::getColorAtPoint(const QPoint& p) const
         return m_previewImage.pixel(
           QPoint(point.x() / ZOOM2, point.y() / ZOOM2));
     }
-    QPoint point = p;
-#if defined(Q_OS_MACOS)
-    QScreen* currentScreen = QGuiAppCurrentScreen().currentScreen();
-    if (currentScreen) {
-        point = QPoint((p.x() - currentScreen->geometry().x()) *
-                         currentScreen->devicePixelRatio(),
-                       (p.y() - currentScreen->geometry().y()) *
-                         currentScreen->devicePixelRatio());
-    }
-#endif
+    QPoint point = physicalPixelAt(p);
     QPixmap pixel = m_pixmap->copy(QRect(point, point));
     return pixel.toImage().pixel(0, 0);
 }
@@ -206,18 +224,9 @@ void ColorGrabWidget::updateWidget()
     QRect rect(0, 0, width, width);
 
     auto realCursorPos = cursorPos();
-    auto adjustedCursorPos = realCursorPos;
+    auto adjustedCursorPos = physicalPixelAt(realCursorPos);
 
-#if defined(Q_OS_MACOS)
-    QScreen* currentScreen = QGuiAppCurrentScreen().currentScreen();
-    if (currentScreen) {
-        adjustedCursorPos =
-          QPoint((realCursorPos.x() - currentScreen->geometry().x()) *
-                   currentScreen->devicePixelRatio(),
-                 (realCursorPos.y() - currentScreen->geometry().y()) *
-                   currentScreen->devicePixelRatio());
-    }
-#endif
+    // DPR conversion is handled by physicalPixelAt() on all platforms.
 
     rect.moveCenter(cursorPos());
     setGeometry(rect);

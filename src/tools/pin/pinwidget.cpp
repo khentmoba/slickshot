@@ -62,6 +62,9 @@ PinWidget::PinWidget(const QPixmap& pixmap,
 
     setGeometry(geometry.adjusted(-MARGIN, -MARGIN, MARGIN, MARGIN));
 
+    // Pinch gestures are delivered from touch events; without accepting them
+    // the gesture never reaches this widget on touch-enabled devices.
+    setAttribute(Qt::WA_AcceptTouchEvents);
     grabGesture(Qt::PinchGesture);
 
     this->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -236,17 +239,24 @@ void PinWidget::paintEvent(QPaintEvent* event)
 
 void PinWidget::pinchTriggered(QPinchGesture* gesture)
 {
-    const QPinchGesture::ChangeFlags changeFlags = gesture->changeFlags();
-    if (changeFlags & QPinchGesture::ScaleFactorChanged) {
-        m_currentStepScaleFactor = gesture->totalScaleFactor();
-        m_expanding = m_currentStepScaleFactor > gesture->lastScaleFactor();
+    if (gesture->state() == Qt::GestureStarted) {
+        m_currentStepScaleFactor = 1.0;
     }
-    if (gesture->state() == Qt::GestureFinished) {
-        m_scaleFactor *= m_currentStepScaleFactor;
-        m_currentStepScaleFactor = 1;
+    // scaleFactor() is the change since the previous event; totalScaleFactor()
+    // grows monotonically on zoom-in and cannot represent a direction change
+    // mid-gesture (zoom-out after zoom-in).
+    if (gesture->changeFlags() & QPinchGesture::ScaleFactorChanged) {
+        const qreal step = gesture->scaleFactor();
+        if (step > 0.0 && !qFuzzyCompare(step, 1.0)) {
+            m_scaleFactor *= step;
+            m_expanding = step > 1.0;
+            m_sizeChanged = true;
+        }
+    }
+    if (gesture->state() == Qt::GestureFinished ||
+        gesture->state() == Qt::GestureCanceled) {
         m_expanding = false;
     }
-    m_sizeChanged = true;
     update();
 }
 

@@ -262,7 +262,10 @@ void GeneralConf::initScrollArea()
     auto* content = new QWidget(m_scrollArea);
     m_scrollArea->setWidget(content);
     m_scrollArea->setWidgetResizable(true);
-    m_scrollArea->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Maximum);
+    // Let the list grow with the configuration window; a Maximum vertical
+    // policy keeps the content at its size hint and leaves empty space when
+    // the window is stretched.
+    m_scrollArea->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
     content->setObjectName("content");
