@@ -223,6 +223,24 @@ QImage PixelateTool::computeEffect(const QPixmap& pixmap,
     // Image where the pseudo-pixelation is calculated.
     // This will later be scaled to cover the selected area.
     QImage pixelated = QImage(effectSize, QImage::Format_RGB32);
+    QRgb* const outBits = reinterpret_cast<QRgb*>(pixelated.bits());
+    const qsizetype outStride =
+      pixelated.bytesPerLine() / static_cast<qsizetype>(sizeof(QRgb));
+
+    std::array<const uchar*, 4> fringeBits{};
+    std::array<qsizetype, 4> fringeStride{};
+    std::array<int, 4> fringeW{};
+    std::array<int, 4> fringeH{};
+    for (int i = 0; i < 4; ++i) {
+        fringeBits[i] = fringe[i].constBits();
+        fringeStride[i] = fringe[i].bytesPerLine();
+        fringeW[i] = fringe[i].width();
+        fringeH[i] = fringe[i].height();
+    }
+
+    constexpr float inv255 = 1.0f / 255.0f;
+    const float invW = 1.0f / static_cast<float>(width);
+    const float invH = 1.0f / static_cast<float>(height);
 
     // For every pixel of the effect, we consider four projections
     // to the fringe and sample a pixel from there.
@@ -230,36 +248,37 @@ QImage PixelateTool::computeEffect(const QPixmap& pixmap,
     std::array<std::array<float, 3>, 4> samples;
 
     for (int x = 0; x < width; ++x) {
+        float const horizontal = x * invW;
+        float const minX = static_cast<float>(qMin(x, width - x)) * invW;
         for (int y = 0; y < height; ++y) {
             float n = noise(prng);
 
             // relative horizontal resp. vertical position
-            float const horizontal = x / (float)width;
-            float const vertical = y / (float)height;
+            float const vertical = y * invH;
 
             for (int i = 0; i < 4; ++i) {
                 int const sx =
-                  std::clamp(static_cast<int>(horizontal * fringe[i].width() +
+                  std::clamp(static_cast<int>(horizontal * fringeW[i] +
                                               sampling_noise(prng)),
                              0,
-                             fringe[i].width() - 1);
+                             fringeW[i] - 1);
                 int const sy =
-                  std::clamp(static_cast<int>(vertical * fringe[i].height() +
+                  std::clamp(static_cast<int>(vertical * fringeH[i] +
                                               sampling_noise(prng)),
                              0,
-                             fringe[i].height() - 1);
+                             fringeH[i] - 1);
                 QRgb const p = reinterpret_cast<const QRgb*>(
-                  fringe[i].constScanLine(sy))[sx];
-                samples[i][0] = static_cast<float>(qRed(p) / 255.0);
-                samples[i][1] = static_cast<float>(qGreen(p) / 255.0);
-                samples[i][2] = static_cast<float>(qBlue(p) / 255.0);
+                  fringeBits[i] + sy * fringeStride[i])[sx];
+                samples[i][0] = static_cast<float>(qRed(p)) * inv255;
+                samples[i][1] = static_cast<float>(qGreen(p)) * inv255;
+                samples[i][2] = static_cast<float>(qBlue(p)) * inv255;
             }
 
             // weights of the horizontal resp. vertical interpolation
-            float const weight_h = (qMin(x, width - x) / width) -
-                                   (qMin(y, height - y) / height) + 0.5;
+            float const weight_h =
+              minX - (static_cast<float>(qMin(y, height - y)) * invH) + 0.5f;
 
-            float const weight_v = 1 - weight_h;
+            float const weight_v = 1.0f - weight_h;
 
             // compute the weighted sum of the vertical and horizontal
             // interpolations
@@ -280,8 +299,7 @@ QImage PixelateTool::computeEffect(const QPixmap& pixmap,
                 rgb[i] = static_cast<int>(0xff * c);
                 rgb[i] = std::clamp(rgb[i], 0, 0xff);
             }
-            QRgb const value = qRgb(rgb[0], rgb[1], rgb[2]);
-            reinterpret_cast<QRgb*>(pixelated.scanLine(y))[x] = value;
+            outBits[y * outStride + x] = qRgb(rgb[0], rgb[1], rgb[2]);
         }
     }
 

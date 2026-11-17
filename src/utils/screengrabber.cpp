@@ -997,6 +997,10 @@ QPixmap ScreenGrabber::windowsScreenshot(int wid)
     const QList<QRect> physRects =
       computePhysicalScreenRects(logicalGeoms, dprs);
 
+    if (screens.size() == 1 && physRects[0].topLeft() == QPoint(0, 0)) {
+        return screenPixmaps[0];
+    }
+
     int canvasWidth = 0;
     int canvasHeight = 0;
     for (int i = 0; i < screens.size(); ++i) {

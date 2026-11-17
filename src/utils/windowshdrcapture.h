@@ -5,6 +5,7 @@
 
 #include <QPixmap>
 
+class QImage;
 class QScreen;
 
 /**
@@ -39,5 +40,18 @@ namespace WindowsHdrCapture {
  * fails, so the caller can fall back to QScreen::grabWindow().
  */
 QPixmap grabScreen(QScreen* screen);
+
+/**
+ * @brief Converts an FP16 scRGB desktop buffer to 8-bit sRGB.
+ *
+ * Normalizes values so that @p sdrWhiteNits becomes sRGB white (255), clamps
+ * out-of-gamut or brighter-than-SDR-white values to [0, 255], and encodes
+ * using the IEC 61966-2-1 sRGB transfer function.
+ */
+QImage convertScRgbToSdr(const uchar* bits,
+                         qsizetype bytesPerLine,
+                         int width,
+                         int height,
+                         double sdrWhiteNits);
 
 } // namespace WindowsHdrCapture

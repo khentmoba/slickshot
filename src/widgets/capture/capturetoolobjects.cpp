@@ -121,8 +121,11 @@ int CaptureToolObjects::findWithRadius(const QPoint& pos,
             painter.translate(-area.topLeft());
             toolItem->drawSearchArea(painter, patch);
         }
-        const QImage image =
-          patch.toImage().convertToFormat(QImage::Format_ARGB32);
+        QImage image = patch.toImage();
+        if (image.format() != QImage::Format_ARGB32 &&
+            image.format() != QImage::Format_ARGB32_Premultiplied) {
+            image = image.convertToFormat(QImage::Format_ARGB32);
+        }
         for (int row = 0; row < image.height(); ++row) {
             const QRgb* scan =
               reinterpret_cast<const QRgb*>(image.constScanLine(row));
@@ -141,13 +144,17 @@ int CaptureToolObjects::findWithRadius(const QPoint& pos,
 void CaptureToolObjects::composeRange(QPixmap& pixmap, int first, int end) const
 {
     const int last = qMin(end, size());
-    for (int index = qMax(first, 0); index < last; ++index) {
+    const int start = qMax(first, 0);
+    if (start >= last) {
+        return;
+    }
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    for (int index = start; index < last; ++index) {
         const QPointer<CaptureTool>& toolItem = m_captureToolObjects.at(index);
         if (toolItem.isNull()) {
             continue;
         }
-        QPainter painter(&pixmap);
-        painter.setRenderHint(QPainter::Antialiasing);
         toolItem->process(painter, pixmap);
     }
 }
