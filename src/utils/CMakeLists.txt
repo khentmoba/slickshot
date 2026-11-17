@@ -46,6 +46,8 @@ IF (WIN32)
   target_sources(
     flameshot_lib
     PRIVATE winlnkfileparse.cpp
+            windowshdrcapture.h
+            windowshdrcapture.cpp
   )
 ENDIF()
 

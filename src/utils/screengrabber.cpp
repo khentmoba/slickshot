@@ -38,6 +38,10 @@
 #include <QUuid>
 #endif
 
+#if defined(Q_OS_WIN)
+#include "utils/windowshdrcapture.h"
+#endif
+
 bool ScreenGrabber::m_monitorSelectionActive = false;
 
 ScreenGrabber::ScreenGrabber(QObject* parent)
@@ -372,7 +376,15 @@ QPixmap ScreenGrabber::grabEntireDesktop(bool& ok, int preSelectedMonitor)
     if (targetMonitor >= 0) {
         QScreen* target = screens[targetMonitor];
         m_selectedMonitor = targetMonitor;
-        screenshot = target->grabWindow(wid);
+        // This is the primary gui capture path, including a single-monitor
+        // setup and gui -n. GDI would collapse an HDR desktop to 8 bits, so
+        // try the FP16 HDR path first and fall back on any null result.
+        if (wid == 0) {
+            screenshot = WindowsHdrCapture::grabScreen(target);
+        }
+        if (screenshot.isNull()) {
+            screenshot = target->grabWindow(wid);
+        }
         ok = !screenshot.isNull();
         if (ok) {
             screenshot.setDevicePixelRatio(target->devicePixelRatio());
@@ -455,6 +467,15 @@ QPixmap ScreenGrabber::grabScreen(QScreen* screen, bool& ok)
     // Grab the whole screen instead; no local crop is needed because the
     // result already covers exactly this screen.
     ok = true;
+#if defined(Q_OS_WIN)
+    // GDI collapses an HDR desktop to 8 bits before Flameshot sees it. On HDR
+    // monitors capture FP16 through Desktop Duplication and convert to SDR
+    // here. A null pixmap (SDR monitor, or any failure) keeps the GDI path.
+    QPixmap hdrPixmap = WindowsHdrCapture::grabScreen(screen);
+    if (!hdrPixmap.isNull()) {
+        return hdrPixmap;
+    }
+#endif
     p = screen->grabWindow(0);
     ok = !p.isNull();
     if (ok) {
@@ -968,7 +989,19 @@ QPixmap ScreenGrabber::windowsScreenshot(int wid)
     for (QScreen* screen : screens) {
         logicalGeoms.append(screen->geometry());
         dprs.append(screen->devicePixelRatio());
-        QPixmap screenPixmap = screen->grabWindow(wid);
+        QPixmap screenPixmap;
+#if defined(Q_OS_WIN)
+        // GDI collapses an HDR desktop to 8 bits before Flameshot sees it.
+        // HDR monitors are captured as FP16 through Desktop Duplication and
+        // converted to SDR here. A null pixmap (SDR monitor, or any failure)
+        // keeps the GDI capture below.
+        if (wid == 0) {
+            screenPixmap = WindowsHdrCapture::grabScreen(screen);
+        }
+#endif
+        if (screenPixmap.isNull()) {
+            screenPixmap = screen->grabWindow(wid);
+        }
         screenPixmap.setDevicePixelRatio(1.0);
         screenPixmaps.append(screenPixmap);
     }

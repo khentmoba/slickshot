@@ -954,13 +954,18 @@ void CaptureWidget::mouseDoubleClickEvent(QMouseEvent* event)
         // Start object editing
         auto activeTool = m_captureToolObjects.at(activeLayerIndex);
         if (activeTool && activeTool->type() == CaptureTool::TYPE_TEXT) {
-            m_activeTool = activeTool;
+            // Refresh the layers panel before taking the edit pointer. The
+            // refresh emits layerChanged, which makes updateActiveLayer push a
+            // pending tool-size change to the undo stack. That redo deep-copies
+            // the stored objects, so the editor must be attached to the fresh
+            // object, not the one we read before the refresh.
+            updateLayersPanel();
+            m_activeTool = m_captureToolObjects.at(activeLayerIndex);
             m_mouseIsClicked = false;
             m_context.mousePos = *m_activeTool->pos();
             m_captureToolObjectsBackup = m_captureToolObjects;
             m_activeTool->setEditMode(true);
             drawToolsData();
-            updateLayersPanel();
             handleToolSignal(CaptureTool::REQ_ADD_CHILD_WIDGET);
             if (!m_activeTool.isNull()) {
                 m_panel->setToolWidget(m_activeTool->configurationWidget());

@@ -5,6 +5,7 @@
 #include <QCursor>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
 #include <QJsonArray>
@@ -45,6 +46,7 @@
 #include "widgets/capture/capturetoolobjects.h"
 #include "widgets/capture/capturewidget.h"
 #include "widgets/capture/magnifierwidget.h"
+#include "widgets/capture/selectionwidget.h"
 #if !defined(DISABLE_UPDATE_CHECKER)
 #include "widgets/updatenotificationwidget.h"
 #endif
@@ -61,6 +63,8 @@ private slots:
     void testAppUpdateInstallScriptAndEncode();
     void testAppUpdateCanInstallInPlaceForPaths();
     void testFileNameHandlerParseFilename();
+    void testProperScreenshotPathDottedDirectory();
+    void testSelectionWidgetStaysStationary();
     void testRegionRejectsOutOfRangeScreen();
     void testOpenWithTempFileRemovalIsDeferred();
     void testButtonListNormalizeRemovesConsecutiveInvalid();
@@ -360,6 +364,35 @@ void SlickShotTests::testFileNameHandlerParseFilename()
           qPrintable(parsedWithExtension));
     }
 #endif
+}
+
+void SlickShotTests::testProperScreenshotPathDottedDirectory()
+{
+    FileNameHandler handler;
+    const QString dirPath =
+      QDir::tempPath() + QStringLiteral("/slickshot_test.dotted");
+    QVERIFY(QDir().mkpath(dirPath));
+    const QString path = handler.properScreenshotPath(dirPath, QString());
+    QVERIFY2(path.startsWith(dirPath), qPrintable(path));
+    // The directory's own suffix must not become the screenshot's extension.
+    QCOMPARE(QFileInfo(path).suffix(), QStringLiteral("png"));
+    QDir(dirPath).removeRecursively();
+}
+
+void SlickShotTests::testSelectionWidgetStaysStationary()
+{
+    QWidget parent;
+    parent.resize(400, 300);
+    SelectionWidget selection(QColor(255, 0, 0), &parent);
+
+    const QRect selectionRect(10, 20, 100, 50);
+    selection.setGeometry(selectionRect);
+
+    // The logical selection follows setGeometry(), but the transparent
+    // overlay widget must stay pinned to the parent so a drag does not
+    // invalidate the whole old and new child footprint.
+    QCOMPARE(selection.geometry(), selectionRect);
+    QCOMPARE(static_cast<QWidget*>(&selection)->geometry(), parent.rect());
 }
 
 void SlickShotTests::testRegionRejectsOutOfRangeScreen()
