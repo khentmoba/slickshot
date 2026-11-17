@@ -15,6 +15,7 @@
 #include <QtCore/qfloat16.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cwchar>
 #include <iterator>
@@ -161,8 +162,16 @@ bool findOutput(HMONITOR monitor,
     return false;
 }
 
+// Precomputed 64 KB lookup table mapping raw IEEE 754 binary16 bits directly
+// to 8-bit sRGB for a given SDR white level.
+struct ScRgbToSrgbLut
+{
+    double sdrWhiteNits = 0.0;
+    std::array<quint8, 65536> table{};
+};
+
 // A small entry is retained per monitor. Current display metadata is
-// checked before reusing its device and duplication.
+// checked before reusing its device, duplication, staging texture, and LUT.
 struct CaptureCache
 {
     HMONITOR monitor = nullptr;
@@ -173,6 +182,11 @@ struct CaptureCache
     ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;
     ComPtr<IDXGIOutputDuplication> duplication;
+    ComPtr<ID3D11Texture2D> staging;
+    UINT stagingWidth = 0;
+    UINT stagingHeight = 0;
+    DXGI_FORMAT stagingFormat = DXGI_FORMAT_UNKNOWN;
+    ScRgbToSrgbLut lut;
 };
 
 std::map<HMONITOR, CaptureCache> g_captureCaches;
@@ -268,44 +282,64 @@ const std::vector<quint8>& srgbEncodingTable()
     return table;
 }
 
-// Converts the captured FP16 scRGB desktop image to 8-bit sRGB. Values are
-// normalized so that the monitor's SDR white level becomes 1.0, which keeps
-// SDR content looking as it does on screen. Anything brighter than SDR white
-// is deliberately clipped, since the result is an ordinary SDR image.
-QImage convertScRgbToSdr(const uchar* bits,
-                         qsizetype bytesPerLine,
-                         int width,
-                         int height,
-                         double sdrWhiteNits)
+void ensureScRgbToSrgbLut(ScRgbToSrgbLut& lut, double sdrWhiteNits)
 {
-    QImage image(width, height, QImage::Format_RGB32);
-    if (image.isNull()) {
-        return {};
+    if (lut.sdrWhiteNits == sdrWhiteNits) {
+        return;
     }
 
     const double sdrWhiteScale = sdrWhiteNits / kScRgbWhiteNits;
     const float inverseSdrWhiteScale = static_cast<float>(1.0 / sdrWhiteScale);
     const quint8* srgb = srgbEncodingTable().data();
+
+    std::vector<quint16> rawBits(65536);
+    std::vector<float> floats(65536);
+    for (size_t i = 0; i < 65536; ++i) {
+        rawBits[i] = static_cast<quint16>(i);
+    }
+    qFloatFromFloat16(floats.data(),
+                      reinterpret_cast<const qfloat16*>(rawBits.data()),
+                      rawBits.size());
+
     // Clamps to [0, 1]: negative (out of gamut) values and NaN become 0,
     // values above SDR white (including infinity) become 1.
-    const auto encode = [inverseSdrWhiteScale, srgb](float scRgb) {
-        const float normalized = scRgb * inverseSdrWhiteScale;
-        const float linear = normalized > 0.0f ? qMin(normalized, 1.0f) : 0.0f;
-        return srgb[static_cast<int>(linear * 65535.0f + 0.5f)];
-    };
+    for (size_t i = 0; i < 65536; ++i) {
+        const float normalized = floats[i] * inverseSdrWhiteScale;
+        const float linear =
+          normalized > 0.0f ? qMin(normalized, 1.0f) : 0.0f;
+        lut.table[i] = srgb[static_cast<int>(linear * 65535.0f + 0.5f)];
+    }
+    lut.sdrWhiteNits = sdrWhiteNits;
+}
 
-    std::vector<float> linearRgb(static_cast<size_t>(width) * 4);
+// Converts the captured FP16 scRGB desktop image to 8-bit sRGB using a
+// precomputed 64 KB FP16->sRGB8 LUT. Values are normalized so that the
+// monitor's SDR white level becomes 1.0, keeping SDR content looking as it
+// does on screen, and anything brighter than SDR white is clipped.
+QImage convertScRgbToSdrWithLut(const uchar* bits,
+                                qsizetype bytesPerLine,
+                                int width,
+                                int height,
+                                const ScRgbToSrgbLut& lut)
+{
+    if (!bits || width <= 0 || height <= 0) {
+        return {};
+    }
+    QImage image(width, height, QImage::Format_RGB32);
+    if (image.isNull()) {
+        return {};
+    }
+
+    const quint8* lutData = lut.table.data();
     for (int y = 0; y < height; ++y) {
         // Rows are bytesPerLine apart, which may exceed width * 8 bytes
-        qFloatFromFloat16(
-          linearRgb.data(),
-          reinterpret_cast<const qfloat16*>(bits + y * bytesPerLine),
-          linearRgb.size());
+        const auto* src =
+          reinterpret_cast<const quint16*>(bits + y * bytesPerLine);
         auto* out = reinterpret_cast<QRgb*>(image.scanLine(y));
         for (int x = 0; x < width; ++x) {
-            const float* pixel = &linearRgb[static_cast<size_t>(x) * 4];
+            const quint16* px = src + static_cast<size_t>(x) * 4;
             // qRgb() is opaque; the desktop alpha channel is not used
-            out[x] = qRgb(encode(pixel[0]), encode(pixel[1]), encode(pixel[2]));
+            out[x] = qRgb(lutData[px[0]], lutData[px[1]], lutData[px[2]]);
         }
     }
     return image;
@@ -354,13 +388,13 @@ CaptureAttempt captureOutput(CaptureCache& cache,
         }
     }
 
-    // Copy the frame to a CPU readable texture and release it right away
+    // Copy the frame to a cached CPU-readable staging texture and release it
+    // right away
     const auto width = static_cast<UINT>(outputDesc.DesktopCoordinates.right -
                                          outputDesc.DesktopCoordinates.left);
     const auto height = static_cast<UINT>(outputDesc.DesktopCoordinates.bottom -
                                           outputDesc.DesktopCoordinates.top);
     ComPtr<ID3D11Texture2D> frame;
-    ComPtr<ID3D11Texture2D> staging;
     D3D11_TEXTURE2D_DESC frameDesc{};
     hr = resource.As(&frame);
     if (SUCCEEDED(hr)) {
@@ -370,18 +404,32 @@ CaptureAttempt captureOutput(CaptureCache& cache,
                         frameDesc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT &&
                         frameDesc.Width == width && frameDesc.Height == height;
     if (usable) {
-        D3D11_TEXTURE2D_DESC stagingDesc = frameDesc;
-        stagingDesc.MipLevels = 1;
-        stagingDesc.ArraySize = 1;
-        stagingDesc.SampleDesc = { 1, 0 };
-        stagingDesc.Usage = D3D11_USAGE_STAGING;
-        stagingDesc.BindFlags = 0;
-        stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-        stagingDesc.MiscFlags = 0;
-        hr = cache.device->CreateTexture2D(
-          &stagingDesc, nullptr, staging.GetAddressOf());
-        if (SUCCEEDED(hr)) {
-            cache.context->CopyResource(staging.Get(), frame.Get());
+        if (!cache.staging || cache.stagingWidth != frameDesc.Width ||
+            cache.stagingHeight != frameDesc.Height ||
+            cache.stagingFormat != frameDesc.Format) {
+            cache.staging.Reset();
+            cache.stagingWidth = 0;
+            cache.stagingHeight = 0;
+            cache.stagingFormat = DXGI_FORMAT_UNKNOWN;
+
+            D3D11_TEXTURE2D_DESC stagingDesc = frameDesc;
+            stagingDesc.MipLevels = 1;
+            stagingDesc.ArraySize = 1;
+            stagingDesc.SampleDesc = { 1, 0 };
+            stagingDesc.Usage = D3D11_USAGE_STAGING;
+            stagingDesc.BindFlags = 0;
+            stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            stagingDesc.MiscFlags = 0;
+            hr = cache.device->CreateTexture2D(
+              &stagingDesc, nullptr, cache.staging.GetAddressOf());
+            if (SUCCEEDED(hr)) {
+                cache.stagingWidth = frameDesc.Width;
+                cache.stagingHeight = frameDesc.Height;
+                cache.stagingFormat = frameDesc.Format;
+            }
+        }
+        if (SUCCEEDED(hr) && cache.staging) {
+            cache.context->CopyResource(cache.staging.Get(), frame.Get());
         }
     }
     // The desktop image must not be referenced once the frame is released
@@ -394,21 +442,24 @@ CaptureAttempt captureOutput(CaptureCache& cache,
     if (!usable) {
         return { {}, "frame is not FP16 or has an unexpected size", hr };
     }
-    if (FAILED(hr)) {
+    if (FAILED(hr) || !cache.staging) {
         return { {}, "staging texture", hr };
     }
 
     D3D11_MAPPED_SUBRESOURCE mapped{};
-    hr = cache.context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+    hr =
+      cache.context->Map(cache.staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(hr)) {
         return { {}, "Map", hr };
     }
-    QImage image = convertScRgbToSdr(static_cast<const uchar*>(mapped.pData),
-                                     static_cast<qsizetype>(mapped.RowPitch),
-                                     static_cast<int>(width),
-                                     static_cast<int>(height),
-                                     sdrWhiteNits);
-    cache.context->Unmap(staging.Get(), 0);
+    ensureScRgbToSrgbLut(cache.lut, sdrWhiteNits);
+    QImage image =
+      convertScRgbToSdrWithLut(static_cast<const uchar*>(mapped.pData),
+                               static_cast<qsizetype>(mapped.RowPitch),
+                               static_cast<int>(width),
+                               static_cast<int>(height),
+                               cache.lut);
+    cache.context->Unmap(cache.staging.Get(), 0);
     if (image.isNull()) {
         return { {}, "QImage allocation", S_OK };
     }
@@ -526,4 +577,20 @@ QPixmap WindowsHdrCapture::grabScreen(QScreen* screen)
     // Same device pixel ratio as QScreen::grabWindow() gives a full screen grab
     pixmap.setDevicePixelRatio(screen->devicePixelRatio());
     return pixmap;
+}
+
+QImage WindowsHdrCapture::convertScRgbToSdr(const uchar* bits,
+                                            qsizetype bytesPerLine,
+                                            int width,
+                                            int height,
+                                            double sdrWhiteNits)
+{
+    if (sdrWhiteNits <= 0.0 || !std::isfinite(sdrWhiteNits)) {
+        return {};
+    }
+    static std::mutex s_lutMutex;
+    static ScRgbToSrgbLut s_lut;
+    std::lock_guard<std::mutex> lock(s_lutMutex);
+    ensureScRgbToSrgbLut(s_lut, sdrWhiteNits);
+    return convertScRgbToSdrWithLut(bits, bytesPerLine, width, height, s_lut);
 }

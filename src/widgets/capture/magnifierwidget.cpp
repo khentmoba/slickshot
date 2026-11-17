@@ -8,6 +8,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPen>
+#include <cstring>
 
 MagnifierWidget::MagnifierWidget(const QPixmap& p,
                                  const QColor& c,
@@ -58,20 +59,40 @@ QImage MagnifierWidget::samplePatch(const QPoint& centerPx, QColor& centerColor)
         return m_cachedPatch;
     }
 
-    QImage patch(m_pixels, m_pixels, QImage::Format_ARGB32);
+    if (m_screenshotImage.isNull() && !m_screenshot.isNull()) {
+        m_screenshotImage = m_screenshot.toImage();
+        if (m_screenshotImage.format() != QImage::Format_ARGB32 &&
+            m_screenshotImage.format() != QImage::Format_RGB32 &&
+            m_screenshotImage.format() != QImage::Format_ARGB32_Premultiplied) {
+            m_screenshotImage =
+              m_screenshotImage.convertToFormat(QImage::Format_ARGB32);
+        }
+        m_screenshotImage.setDevicePixelRatio(1.0);
+    }
+
+    const QImage::Format patchFormat =
+      !m_screenshotImage.isNull() ? m_screenshotImage.format()
+                                  : QImage::Format_ARGB32;
+    QImage patch(m_pixels, m_pixels, patchFormat);
     patch.fill(Qt::black);
     m_cachedCenterColor = Qt::black;
-    if (!m_screenshot.isNull()) {
+    if (!m_screenshotImage.isNull()) {
         const int topLeftX = centerPx.x() - m_magPixels;
         const int topLeftY = centerPx.y() - m_magPixels;
         const QRect srcRect = QRect(topLeftX, topLeftY, m_pixels, m_pixels)
-                                .intersected(m_screenshot.rect());
+                                .intersected(m_screenshotImage.rect());
         if (!srcRect.isEmpty()) {
-            QImage subImg = m_screenshot.copy(srcRect).toImage();
-            subImg.setDevicePixelRatio(1.0);
-            QPainter patchPainter(&patch);
-            patchPainter.drawImage(
-              srcRect.x() - topLeftX, srcRect.y() - topLeftY, subImg);
+            const int dstX = srcRect.x() - topLeftX;
+            const int dstY = srcRect.y() - topLeftY;
+            const size_t rowBytes = static_cast<size_t>(srcRect.width()) * 4;
+            for (int row = 0; row < srcRect.height(); ++row) {
+                const uchar* srcRow =
+                  m_screenshotImage.constScanLine(srcRect.y() + row) +
+                  static_cast<qsizetype>(srcRect.x()) * 4;
+                uchar* dstRow =
+                  patch.scanLine(dstY + row) + static_cast<qsizetype>(dstX) * 4;
+                std::memcpy(dstRow, srcRow, rowBytes);
+            }
         }
         m_cachedCenterColor = patch.pixelColor(m_magPixels, m_magPixels);
     }

@@ -537,10 +537,11 @@ QPixmap CaptureWidget::pixmap()
 bool CaptureWidget::commitCurrentTool()
 {
     if (m_activeTool) {
-        processPixmapWithTool(&m_context.screenshot, m_activeTool);
         if (m_activeTool->isValid() && !m_activeTool->editMode() &&
             m_toolWidget) {
             pushToolToStack();
+        } else {
+            processPixmapWithTool(&m_context.screenshot, m_activeTool);
         }
         if (m_toolWidget) {
             m_toolWidget->update();
@@ -988,9 +989,11 @@ void CaptureWidget::mouseMoveEvent(QMouseEvent* e)
 {
     if (m_magnifier) {
         if (!m_activeButton) {
-            m_magnifier->show();
+            if (!m_magnifier->isVisible()) {
+                m_magnifier->show();
+            }
             updateMagnifierArea();
-        } else {
+        } else if (m_magnifier->isVisible()) {
             m_magnifier->hide();
         }
     }
@@ -1582,13 +1585,15 @@ void CaptureWidget::onToolSizeChanged(int t)
     // update tool size of selected object
     auto toolItem = activeToolObject();
     if (toolItem) {
+        const QRect oldRect = paddedUpdateRect(toolItem->boundingRect());
         // Change thickness
         toolItem->onSizeChanged(t);
         if (!m_existingObjectIsChanged) {
             m_captureToolObjectsBackup = m_captureToolObjects;
             m_existingObjectIsChanged = true;
         }
-        drawToolsData();
+        redrawFromLayer(m_panel->activeLayerIndex());
+        update(oldRect);
         updateTool(toolItem);
     }
 
@@ -1620,7 +1625,7 @@ void CaptureWidget::setDrawColor(const QColor& c)
         if (toolItem) {
             // Change color
             toolItem->onColorChanged(c);
-            drawToolsData();
+            redrawFromLayer(m_panel->activeLayerIndex());
         }
     }
 }
@@ -1968,7 +1973,16 @@ void CaptureWidget::pushToolToStack()
         m_captureToolObjects.append(m_activeTool);
         pushObjectsStateToUndoStack();
         releaseActiveTool();
-        drawToolsData();
+        invalidateDragBase();
+        if (activeToolObject()) {
+            // Recomposite when an existing object's selection handles may have
+            // been drawn onto m_context.screenshot.
+            drawToolsData(false);
+        } else if (auto newTool =
+                     m_captureToolObjects.at(m_captureToolObjects.size() - 1)) {
+            processPixmapWithTool(&m_context.screenshot, newTool);
+            update(paddedUpdateRect(newTool->boundingRect()));
+        }
         updateLayersPanel();
 
         // restore signal connection for updating layer

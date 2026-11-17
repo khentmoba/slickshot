@@ -54,6 +54,10 @@
 #include "widgets/capture/overlaymessage.h"
 #include "widgets/capture/selectionwidget.h"
 #include "widgets/panel/colorgrabwidget.h"
+#if defined(Q_OS_WIN)
+#include "utils/windowshdrcapture.h"
+#include <QtCore/qfloat16.h>
+#endif
 #if !defined(DISABLE_UPDATE_CHECKER)
 #include "widgets/updatenotificationwidget.h"
 #endif
@@ -96,6 +100,9 @@ private slots:
     void testColorGrabMapsLogicalCursorToDevicePixel();
     void testConfigWheelLeavesUnfocusedComboUnchanged();
     void testPinWidgetAcceptsTouchEvents();
+#if defined(Q_OS_WIN)
+    void testWindowsHdrConvertScRgbToSdr();
+#endif
 #if !defined(DISABLE_UPDATE_CHECKER)
     void testUpdateNotificationWidget();
 #endif
@@ -1130,6 +1137,78 @@ void SlickShotTests::testUpdateNotificationWidget()
 
     banner->hide();
     QTRY_VERIFY_WITH_TIMEOUT(!banner->isVisibleTo(&parent), 1000);
+}
+#endif
+
+#if defined(Q_OS_WIN)
+void SlickShotTests::testWindowsHdrConvertScRgbToSdr()
+{
+    auto refEncode = [](float scRgb, double sdrWhiteNits) -> quint8 {
+        const float invScale = static_cast<float>(80.0 / sdrWhiteNits);
+        const float normalized = scRgb * invScale;
+        const float linear = normalized > 0.0f ? qMin(normalized, 1.0f) : 0.0f;
+        const double l =
+          static_cast<double>(static_cast<int>(linear * 65535.0f + 0.5f)) /
+          65535.0;
+        const double v =
+          l <= 0.0031308 ? 12.92 * l : 1.055 * std::pow(l, 1.0 / 2.4) - 0.055;
+        return static_cast<quint8>(qBound(0, qRound(v * 255.0), 255));
+    };
+
+    // Invalid inputs must safely return a null image.
+    QVERIFY(
+      WindowsHdrCapture::convertScRgbToSdr(nullptr, 32, 4, 4, 200.0).isNull());
+    const quint16 dummy[4] = {};
+    QVERIFY(WindowsHdrCapture::convertScRgbToSdr(
+              reinterpret_cast<const uchar*>(dummy), 8, 1, 1, 0.0)
+              .isNull());
+    QVERIFY(WindowsHdrCapture::convertScRgbToSdr(
+              reinterpret_cast<const uchar*>(dummy), 8, 0, 1, 200.0)
+              .isNull());
+
+    // Test representative FP16 bit patterns across two SDR white levels and
+    // with row stride > width * 8 bytes.
+    const std::vector<float> samples = {
+        0.0f,  0.001f, 0.05f, 0.5f, 1.0f, 2.5f,
+        5.0f,  10.0f,  -0.5f, std::numeric_limits<float>::infinity(),
+        -std::numeric_limits<float>::infinity(),
+        std::numeric_limits<float>::quiet_NaN()
+    };
+    const int width = static_cast<int>(samples.size());
+    const int height = 2;
+    const qsizetype bytesPerLine = static_cast<qsizetype>(width) * 8 + 16;
+    std::vector<uchar> buffer(static_cast<size_t>(bytesPerLine) * height, 0xAB);
+
+    for (int y = 0; y < height; ++y) {
+        auto* row = reinterpret_cast<qfloat16*>(buffer.data() + y * bytesPerLine);
+        for (int x = 0; x < width; ++x) {
+            const float f = samples[(x + y) % samples.size()];
+            const qfloat16 h(f);
+            row[x * 4 + 0] = h;
+            row[x * 4 + 1] = qfloat16(f * 0.5f);
+            row[x * 4 + 2] = qfloat16(f * 1.5f);
+            row[x * 4 + 3] = qfloat16(1.0f);
+        }
+    }
+
+    for (double sdrWhiteNits : { 80.0, 240.0 }) {
+        const QImage out = WindowsHdrCapture::convertScRgbToSdr(
+          buffer.data(), bytesPerLine, width, height, sdrWhiteNits);
+        QCOMPARE(out.size(), QSize(width, height));
+        QCOMPARE(out.format(), QImage::Format_RGB32);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                const float f = samples[(x + y) % samples.size()];
+                const float rIn = static_cast<float>(qfloat16(f));
+                const float gIn = static_cast<float>(qfloat16(f * 0.5f));
+                const float bIn = static_cast<float>(qfloat16(f * 1.5f));
+                const QRgb expected = qRgb(refEncode(rIn, sdrWhiteNits),
+                                           refEncode(gIn, sdrWhiteNits),
+                                           refEncode(bIn, sdrWhiteNits));
+                QCOMPARE(out.pixel(x, y), expected);
+            }
+        }
+    }
 }
 #endif
 

@@ -35,6 +35,7 @@ private:
     QColor m_color;
     QColor m_borderColor;
     QPixmap m_screenshot;
+    QImage m_screenshotImage;
 
     // Cached readout font/metrics, sampled patch and color label, reused
     // across mouse moves instead of being rebuilt on every paint.
