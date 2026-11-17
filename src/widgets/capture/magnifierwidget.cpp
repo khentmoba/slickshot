@@ -70,9 +70,9 @@ QImage MagnifierWidget::samplePatch(const QPoint& centerPx, QColor& centerColor)
         m_screenshotImage.setDevicePixelRatio(1.0);
     }
 
-    const QImage::Format patchFormat =
-      !m_screenshotImage.isNull() ? m_screenshotImage.format()
-                                  : QImage::Format_ARGB32;
+    const QImage::Format patchFormat = !m_screenshotImage.isNull()
+                                         ? m_screenshotImage.format()
+                                         : QImage::Format_ARGB32;
     QImage patch(m_pixels, m_pixels, patchFormat);
     patch.fill(Qt::black);
     m_cachedCenterColor = Qt::black;

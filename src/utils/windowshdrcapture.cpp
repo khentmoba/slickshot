@@ -305,8 +305,7 @@ void ensureScRgbToSrgbLut(ScRgbToSrgbLut& lut, double sdrWhiteNits)
     // values above SDR white (including infinity) become 1.
     for (size_t i = 0; i < 65536; ++i) {
         const float normalized = floats[i] * inverseSdrWhiteScale;
-        const float linear =
-          normalized > 0.0f ? qMin(normalized, 1.0f) : 0.0f;
+        const float linear = normalized > 0.0f ? qMin(normalized, 1.0f) : 0.0f;
         lut.table[i] = srgb[static_cast<int>(linear * 65535.0f + 0.5f)];
     }
     lut.sdrWhiteNits = sdrWhiteNits;
@@ -447,8 +446,7 @@ CaptureAttempt captureOutput(CaptureCache& cache,
     }
 
     D3D11_MAPPED_SUBRESOURCE mapped{};
-    hr =
-      cache.context->Map(cache.staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+    hr = cache.context->Map(cache.staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(hr)) {
         return { {}, "Map", hr };
     }
