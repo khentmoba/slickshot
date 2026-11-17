@@ -33,7 +33,9 @@ void ButtonHandler::hide()
         m_toolbarBackdrop->hide();
     }
     for (CaptureToolButton* b : m_vectorButtons) {
-        b->hide();
+        if (!b->isHidden()) {
+            b->hide();
+        }
     }
 }
 
