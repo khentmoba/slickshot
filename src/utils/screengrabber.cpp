@@ -376,7 +376,15 @@ QPixmap ScreenGrabber::grabEntireDesktop(bool& ok, int preSelectedMonitor)
     if (targetMonitor >= 0) {
         QScreen* target = screens[targetMonitor];
         m_selectedMonitor = targetMonitor;
-        screenshot = target->grabWindow(wid);
+        // This is the primary gui capture path, including a single-monitor
+        // setup and gui -n. GDI would collapse an HDR desktop to 8 bits, so
+        // try the FP16 HDR path first and fall back on any null result.
+        if (wid == 0) {
+            screenshot = WindowsHdrCapture::grabScreen(target);
+        }
+        if (screenshot.isNull()) {
+            screenshot = target->grabWindow(wid);
+        }
         ok = !screenshot.isNull();
         if (ok) {
             screenshot.setDevicePixelRatio(target->devicePixelRatio());
