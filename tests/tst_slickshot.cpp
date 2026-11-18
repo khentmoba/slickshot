@@ -1358,9 +1358,8 @@ void SlickShotTests::testTextWidgetShortcutOverrideWordDeletion()
             continue;
         }
         const QKeyCombination combo = seqs.first()[0];
-        QKeyEvent ev(QEvent::ShortcutOverride,
-                     combo.key(),
-                     combo.keyboardModifiers());
+        QKeyEvent ev(
+          QEvent::ShortcutOverride, combo.key(), combo.keyboardModifiers());
         ev.setAccepted(false);
         QVERIFY(QApplication::sendEvent(&widget, &ev));
         QVERIFY(ev.isAccepted());
