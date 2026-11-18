@@ -346,11 +346,18 @@ void SlickShotTests::testFileNameHandlerParseFilename()
     QCOMPARE(handler.parseFilename(QStringLiteral("shot%")),
              QStringLiteral("shot"));
 
-    // Explicit '/' and '\' in the pattern act as relative subfolder
-    // separators, while ':' is sanitized and strftime-expanded slashes (e.g.
-    // %D) become '⁄' rather than creating subfolders.
+    // Explicit '/' (and '\' on Windows) in the pattern act as relative
+    // subfolder separators, while ':' is sanitized and strftime-expanded
+    // slashes (e.g. %D) become '⁄' rather than creating subfolders.
+    QCOMPARE(handler.parseFilename(QStringLiteral("a/b/c:d")),
+             QStringLiteral("a/b/c-d"));
+#if defined(Q_OS_WIN)
     QCOMPARE(handler.parseFilename(QStringLiteral("a/b\\c:d")),
              QStringLiteral("a/b/c-d"));
+#else
+    QCOMPARE(handler.parseFilename(QStringLiteral("a/b\\c:d")),
+             QStringLiteral("a/b\\c-d"));
+#endif
     const QString expandedDate = handler.parseFilename(QStringLiteral("%D"));
     QVERIFY(!expandedDate.contains(QLatin1Char('/')));
     QVERIFY(!expandedDate.contains(QLatin1Char('\\')));
