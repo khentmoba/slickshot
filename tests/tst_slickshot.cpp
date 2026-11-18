@@ -45,8 +45,8 @@
 #include "utils/appupdate.h"
 #include "utils/filenamehandler.h"
 #include "utils/geometryutils.h"
-#include "utils/launcherutils.h"
 #include "utils/history.h"
+#include "utils/launcherutils.h"
 #include "utils/screengrabber.h"
 #include "utils/screenshotsaver.h"
 #include "utils/shortcututils.h"
@@ -935,21 +935,18 @@ void SlickShotTests::testShortcutsWidgetHiddenOnConstruction()
 
 void SlickShotTests::testShortcutSequenceFromKeyEvent()
 {
-    QKeyEvent printCombo(QEvent::KeyPress,
-                         Qt::Key_Print,
-                         Qt::ControlModifier | Qt::ShiftModifier);
-    QCOMPARE(shortcututils::sequenceFromKeyEvent(&printCombo),
-             QKeySequence(Qt::ControlModifier | Qt::ShiftModifier |
-                          Qt::Key_Print));
+    QKeyEvent printCombo(
+      QEvent::KeyPress, Qt::Key_Print, Qt::ControlModifier | Qt::ShiftModifier);
+    QCOMPARE(
+      shortcututils::sequenceFromKeyEvent(&printCombo),
+      QKeySequence(Qt::ControlModifier | Qt::ShiftModifier | Qt::Key_Print));
 
     // A prior modifier-only press must not leak into the next sequence.
-    QKeyEvent modifierOnly(QEvent::KeyPress,
-                           Qt::Key_Control,
-                           Qt::ControlModifier);
+    QKeyEvent modifierOnly(
+      QEvent::KeyPress, Qt::Key_Control, Qt::ControlModifier);
     QVERIFY(!shortcututils::sequenceFromKeyEvent(&modifierOnly).isEmpty());
-    QKeyEvent nextShortcut(QEvent::KeyPress,
-                           Qt::Key_A,
-                           Qt::ControlModifier | Qt::ShiftModifier);
+    QKeyEvent nextShortcut(
+      QEvent::KeyPress, Qt::Key_A, Qt::ControlModifier | Qt::ShiftModifier);
     QCOMPARE(shortcututils::sequenceFromKeyEvent(&nextShortcut),
              QKeySequence(Qt::ControlModifier | Qt::ShiftModifier | Qt::Key_A));
 }
@@ -981,7 +978,8 @@ void SlickShotTests::testPerToolColorPersistence()
     const QColor originalRectangle =
       config.toolColor(CaptureTool::TYPE_RECTANGLE);
 
-    config.setToolColor(CaptureTool::TYPE_TEXT, QColor(QStringLiteral("#123456")));
+    config.setToolColor(CaptureTool::TYPE_TEXT,
+                        QColor(QStringLiteral("#123456")));
     QCOMPARE(ConfigHandler().toolColor(CaptureTool::TYPE_TEXT),
              QColor(QStringLiteral("#123456")));
     QCOMPARE(ConfigHandler().toolColor(CaptureTool::TYPE_RECTANGLE),
@@ -1061,22 +1059,22 @@ void SlickShotTests::testOpenWithCommandArguments()
 void SlickShotTests::testEffectiveDesktopPixelRatio()
 {
     QPixmap hiDpi(1600, 1200);
-    QCOMPARE(GeometryUtils::effectiveDesktopPixelRatio(
-               hiDpi, QRect(0, 0, 800, 600)),
-             qreal(2.0));
+    QCOMPARE(
+      GeometryUtils::effectiveDesktopPixelRatio(hiDpi, QRect(0, 0, 800, 600)),
+      qreal(2.0));
 
     QPixmap oneToOne(800, 600);
-    QCOMPARE(GeometryUtils::effectiveDesktopPixelRatio(
-               oneToOne, QRect(0, 0, 800, 600)),
+    QCOMPARE(GeometryUtils::effectiveDesktopPixelRatio(oneToOne,
+                                                       QRect(0, 0, 800, 600)),
              qreal(1.0));
 }
 
 void SlickShotTests::testLogicalToPhysicalDesktopMixedDpi()
 {
-    const QList<QRect> logical{
-        QRect(0, 0, 1920, 1080), QRect(1920, 0, 1280, 720) };
-    const QList<QRect> physical{
-        QRect(0, 0, 1920, 1080), QRect(1920, 0, 2560, 1440) };
+    const QList<QRect> logical{ QRect(0, 0, 1920, 1080),
+                                QRect(1920, 0, 1280, 720) };
+    const QList<QRect> physical{ QRect(0, 0, 1920, 1080),
+                                 QRect(1920, 0, 2560, 1440) };
 
     // Region starts on the 100% monitor and continues onto the 200% monitor.
     const QRect mapped = GeometryUtils::logicalToPhysicalDesktop(
