@@ -116,7 +116,8 @@ QString FileNameHandler::parseFilename(const QString& name)
             return {};
         }
 #if defined(Q_OS_WIN)
-        // A bare reserved device name is not a usable path component on Windows.
+        // A bare reserved device name is not a usable path component on
+        // Windows.
         if (isWindowsReservedName(part)) {
             part.prepend(QLatin1Char('_'));
         }
