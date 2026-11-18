@@ -138,6 +138,7 @@ static QMap<class QString, QSharedPointer<ValueHandler>>
     OPTION("savePathFixed"               ,Bool               ( false         )),
     OPTION("saveAsFileExtension"         ,SaveFileExtension  (               )),
     OPTION("saveLastRegion"              ,Bool               ( false         )),
+    OPTION("saveLastRegionOnCancel"      ,Bool               ( false         )),
     OPTION("ignoreWholeScreenLastRegion" ,Bool               ( false         )),
     OPTION("uploadHistoryMax"            ,LowerBoundedInt    ( 0, 25         )),
     OPTION("undoLimit"                   ,BoundedInt         ( 0, 999, 100   )),
@@ -160,9 +161,19 @@ static QMap<class QString, QSharedPointer<ValueHandler>>
     OPTION("drawRectangleSize"           ,LowerBoundedInt    ( 1, 1          )),
     OPTION("drawMarkerSize"              ,LowerBoundedInt    ( 1, 5          )),
     OPTION("drawColor"                   ,Color              ( Qt::red       )),
+    // Per-tool colors fall back to drawColor until they are set explicitly,
+    // so existing configurations keep their current appearance.
+    OPTION("drawTextColor"               ,Color              ( Qt::red       )),
+    OPTION("drawRectangleColor"          ,Color              ( Qt::red       )),
+    OPTION("drawMarkerColor"             ,Color              ( Qt::red       )),
+    OPTION("drawPixelateColor"           ,Color              ( Qt::red       )),
+    OPTION("drawCircleCounterColor"      ,Color              ( Qt::red       )),
     OPTION("userColors"                  ,UserColors         ( 3, 17         )),
     OPTION("ignoreUpdateToVersion"       ,String             ( ""            )),
     OPTION("keepOpenAppLauncher"         ,Bool               ( false         )),
+    OPTION("openWithDefaultApp"          ,String             ( ""            )),
+    OPTION("instantCaptureUseLastRegion" ,Bool               ( false         )),
+    OPTION("instantCaptureSave"          ,Bool               ( false         )),
     OPTION("fontFamily"                  ,String             ( ""            )),
     // PREDEFINED_COLOR_PALETTE_LARGE is defined in src/CMakeList.txt file and can be overwritten in GitHub actions
     OPTION("predefinedColorPaletteLarge", Bool               ( PREDEFINED_COLOR_PALETTE_LARGE )),
@@ -240,6 +251,7 @@ static QMap<QString, QSharedPointer<KeySequence>> recognizedShortcuts = {
     SHORTCUT("TYPE_COMMIT_CURRENT_TOOL" ,   "Ctrl+Return"           ),
 #if defined(Q_OS_MACOS) || defined(Q_OS_WIN)
     SHORTCUT("TAKE_SCREENSHOT_INSTANT"  ,                           ),
+    SHORTCUT("TAKE_SCREENSHOT_NO_OVERLAY",                          ),
 #endif
 #if defined(Q_OS_WIN)
     SHORTCUT("TAKE_SCREENSHOT"          ,   "Meta+Shift+x"          ),
@@ -476,6 +488,58 @@ int ConfigHandler::toolSize(CaptureTool::Type toolType)
     } else {
         // All other tools are sharing the same size
         return drawThickness();
+    }
+}
+
+QColor ConfigHandler::colorForKey(const QString& key)
+{
+    if (!m_settings.contains(key)) {
+        return drawColor();
+    }
+    return value(key).value<QColor>();
+}
+
+void ConfigHandler::setToolColor(CaptureTool::Type toolType,
+                                 const QColor& color)
+{
+    switch (toolType) {
+        case CaptureTool::TYPE_TEXT:
+            setDrawTextColor(color);
+            break;
+        case CaptureTool::TYPE_RECTANGLE:
+            setDrawRectangleColor(color);
+            break;
+        case CaptureTool::TYPE_MARKER:
+            setDrawMarkerColor(color);
+            break;
+        case CaptureTool::TYPE_PIXELATE:
+            setDrawPixelateColor(color);
+            break;
+        case CaptureTool::TYPE_CIRCLECOUNT:
+            setDrawCircleCounterColor(color);
+            break;
+        default:
+            // All other tools keep sharing the global color.
+            setDrawColor(color);
+            break;
+    }
+}
+
+QColor ConfigHandler::toolColor(CaptureTool::Type toolType)
+{
+    switch (toolType) {
+        case CaptureTool::TYPE_TEXT:
+            return colorForKey(QStringLiteral("drawTextColor"));
+        case CaptureTool::TYPE_RECTANGLE:
+            return colorForKey(QStringLiteral("drawRectangleColor"));
+        case CaptureTool::TYPE_MARKER:
+            return colorForKey(QStringLiteral("drawMarkerColor"));
+        case CaptureTool::TYPE_PIXELATE:
+            return colorForKey(QStringLiteral("drawPixelateColor"));
+        case CaptureTool::TYPE_CIRCLECOUNT:
+            return colorForKey(QStringLiteral("drawCircleCounterColor"));
+        default:
+            return drawColor();
     }
 }
 

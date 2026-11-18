@@ -105,6 +105,44 @@ bool coversWholeScreen(const QRect& region)
     return false;
 }
 
+QRect regionInDesktopPixmap(const QRect& region, const QPixmap& pixmap)
+{
+    QList<QRect> logicalScreens;
+    QList<qreal> screenDprs;
+    const QList<QScreen*> screens = QGuiApplication::screens();
+    for (QScreen* screen : screens) {
+        logicalScreens.append(screen->geometry());
+        screenDprs.append(screen->devicePixelRatio());
+    }
+
+#if defined(Q_OS_WIN)
+    // windowsScreenshot() composes each monitor at its physical size.
+    return GeometryUtils::logicalToPhysicalDesktop(
+      region,
+      logicalScreens,
+      ScreenGrabber::computePhysicalScreenRects(logicalScreens, screenDprs));
+#else
+    // macOS and the Unix paths composite into one uniform-DPR pixmap.
+    QRect desktopLogical;
+    for (const QRect& geometry : logicalScreens) {
+        desktopLogical = desktopLogical.united(geometry);
+    }
+    const QRect local = region.translated(-desktopLogical.topLeft())
+                          .intersected(QRect(0,
+                                             0,
+                                             desktopLogical.width(),
+                                             desktopLogical.height()));
+    if (local.isEmpty()) {
+        return {};
+    }
+    return GeometryUtils::logicalToPixmap(
+             local,
+             GeometryUtils::effectiveDesktopPixelRatio(pixmap,
+                                                       desktopLogical))
+      .translated(desktopLogical.topLeft());
+#endif
+}
+
 } // namespace
 
 Flameshot::Flameshot()
@@ -113,6 +151,7 @@ Flameshot::Flameshot()
 #if (defined(Q_OS_MACOS) || defined(Q_OS_WIN))
   , m_HotkeyScreenshotCapture(nullptr)
   , m_HotkeyScreenshotCaptureInstant(nullptr)
+  , m_HotkeyInstantDirect(nullptr)
 #endif
 #if (defined(Q_OS_MACOS) && ENABLE_IMGUR)
   , m_HotkeyScreenshotHistory(nullptr)
@@ -147,6 +186,26 @@ Flameshot::Flameshot()
                              req.addTask(CaptureRequest::COPY);
                              req.addTask(CaptureRequest::ACCEPT_ON_SELECT);
                              gui(req);
+                         });
+    }
+
+    // No-overlay capture: grab the full desktop (or the last region) directly
+    // and apply the export tasks without showing the editor.
+    const QKeySequence directSeq(
+      ConfigHandler().shortcut("TAKE_SCREENSHOT_NO_OVERLAY"));
+    if (!directSeq.isEmpty()) {
+        m_HotkeyInstantDirect = new QHotkey(directSeq, true, this);
+        QObject::connect(m_HotkeyInstantDirect,
+                         &QHotkey::activated,
+                         qApp,
+                         [this]() {
+                             CaptureRequest req(
+                               CaptureRequest::FULLSCREEN_MODE);
+                             req.addTask(CaptureRequest::COPY);
+                             if (ConfigHandler().instantCaptureSave()) {
+                                 req.addSaveTask();
+                             }
+                             instantCapture(req);
                          });
     }
 #endif
@@ -324,6 +383,38 @@ void Flameshot::full(const CaptureRequest& req)
     } else {
         emit captureFailed();
     }
+}
+
+void Flameshot::instantCapture(const CaptureRequest& req)
+{
+    if (!resolveAnyConfigErrors()) {
+        return;
+    }
+
+    bool ok = false;
+    QPixmap capture = ScreenGrabber().grabFullDesktop(ok);
+    if (!ok || capture.isNull()) {
+        emit captureFailed();
+        return;
+    }
+
+    QRect selection;
+    if (ConfigHandler().instantCaptureUseLastRegion()) {
+        const QRect lastRegion = getLastRegion();
+        if (!lastRegion.isNull() &&
+            (!ConfigHandler().ignoreWholeScreenLastRegion() ||
+             !coversWholeScreen(lastRegion))) {
+            const QRect crop = regionInDesktopPixmap(lastRegion, capture);
+            if (crop.isEmpty()) {
+                emit captureFailed();
+                return;
+            }
+            capture = capture.copy(crop);
+            selection = lastRegion;
+        }
+    }
+
+    exportCapture(capture, selection, req);
 }
 
 void Flameshot::launcher()

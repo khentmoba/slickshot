@@ -45,9 +45,11 @@
 #include "utils/appupdate.h"
 #include "utils/filenamehandler.h"
 #include "utils/geometryutils.h"
+#include "utils/launcherutils.h"
 #include "utils/history.h"
 #include "utils/screengrabber.h"
 #include "utils/screenshotsaver.h"
+#include "utils/shortcututils.h"
 #include "utils/snippingtoolmanager.h"
 #include "utils/valuehandler.h"
 #include "utils/windowpicker.h"
@@ -97,6 +99,15 @@ private slots:
     void testHistoryPreviewScalingUsesCrossMultiplication();
     void testMagnifierWidgetHiDpiAndRender();
     void testShortcutsWidgetHiddenOnConstruction();
+    void testShortcutSequenceFromKeyEvent();
+    void testIntlBackslashFallbackDetection();
+    void testSaveLastRegionOnCancelConfig();
+    void testPerToolColorPersistence();
+    void testOpenWithDefaultAppConfig();
+    void testInstantCaptureConfig();
+    void testOpenWithCommandArguments();
+    void testEffectiveDesktopPixelRatio();
+    void testLogicalToPhysicalDesktopMixedDpi();
     void testCaptureToolObjectsFindTopmost();
     void testSaveToClipboardMimeRoundTrip();
     void testComposeRangeSplitMatchesFull();
@@ -920,6 +931,157 @@ void SlickShotTests::testShortcutsWidgetHiddenOnConstruction()
         QVERIFY(!description->text().isEmpty());
         QVERIFY(table->item(row, 1) != nullptr);
     }
+}
+
+void SlickShotTests::testShortcutSequenceFromKeyEvent()
+{
+    QKeyEvent printCombo(QEvent::KeyPress,
+                         Qt::Key_Print,
+                         Qt::ControlModifier | Qt::ShiftModifier);
+    QCOMPARE(shortcututils::sequenceFromKeyEvent(&printCombo),
+             QKeySequence(Qt::ControlModifier | Qt::ShiftModifier |
+                          Qt::Key_Print));
+
+    // A prior modifier-only press must not leak into the next sequence.
+    QKeyEvent modifierOnly(QEvent::KeyPress,
+                           Qt::Key_Control,
+                           Qt::ControlModifier);
+    QVERIFY(!shortcututils::sequenceFromKeyEvent(&modifierOnly).isEmpty());
+    QKeyEvent nextShortcut(QEvent::KeyPress,
+                           Qt::Key_A,
+                           Qt::ControlModifier | Qt::ShiftModifier);
+    QCOMPARE(shortcututils::sequenceFromKeyEvent(&nextShortcut),
+             QKeySequence(Qt::ControlModifier | Qt::ShiftModifier | Qt::Key_A));
+}
+
+void SlickShotTests::testIntlBackslashFallbackDetection()
+{
+    QVERIFY(shortcututils::needsIntlBackslashFallback(
+      QKeySequence(QStringLiteral("Ctrl+\\"))));
+    QVERIFY(!shortcututils::needsIntlBackslashFallback(
+      QKeySequence(QStringLiteral("Ctrl+Shift+\\"))));
+    QVERIFY(!shortcututils::needsIntlBackslashFallback(
+      QKeySequence(QStringLiteral("Meta+Shift+X"))));
+}
+
+void SlickShotTests::testSaveLastRegionOnCancelConfig()
+{
+    ConfigHandler config;
+    const bool original = config.saveLastRegionOnCancel();
+    config.setSaveLastRegionOnCancel(true);
+    QVERIFY(ConfigHandler().saveLastRegionOnCancel());
+    config.setSaveLastRegionOnCancel(original);
+    QCOMPARE(ConfigHandler().saveLastRegionOnCancel(), original);
+}
+
+void SlickShotTests::testPerToolColorPersistence()
+{
+    ConfigHandler config;
+    const QColor originalText = config.toolColor(CaptureTool::TYPE_TEXT);
+    const QColor originalRectangle =
+      config.toolColor(CaptureTool::TYPE_RECTANGLE);
+
+    config.setToolColor(CaptureTool::TYPE_TEXT, QColor(QStringLiteral("#123456")));
+    QCOMPARE(ConfigHandler().toolColor(CaptureTool::TYPE_TEXT),
+             QColor(QStringLiteral("#123456")));
+    QCOMPARE(ConfigHandler().toolColor(CaptureTool::TYPE_RECTANGLE),
+             originalRectangle);
+
+    config.setToolColor(CaptureTool::TYPE_TEXT, originalText);
+    config.setToolColor(CaptureTool::TYPE_RECTANGLE, originalRectangle);
+}
+
+void SlickShotTests::testOpenWithDefaultAppConfig()
+{
+    ConfigHandler config;
+    const QString original = config.openWithDefaultApp();
+    config.setOpenWithDefaultApp(QStringLiteral("C:\\Tools\\viewer.exe %"));
+    QCOMPARE(ConfigHandler().openWithDefaultApp(),
+             QStringLiteral("C:\\Tools\\viewer.exe %"));
+    config.setOpenWithDefaultApp(original);
+    QCOMPARE(ConfigHandler().openWithDefaultApp(), original);
+}
+
+void SlickShotTests::testInstantCaptureConfig()
+{
+    ConfigHandler config;
+    const bool useLastRegion = config.instantCaptureUseLastRegion();
+    const bool save = config.instantCaptureSave();
+
+    config.setInstantCaptureUseLastRegion(true);
+    config.setInstantCaptureSave(true);
+    QVERIFY(ConfigHandler().instantCaptureUseLastRegion());
+    QVERIFY(ConfigHandler().instantCaptureSave());
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    QVERIFY(ConfigHandler::recognizedShortcutNames().contains(
+      QStringLiteral("TAKE_SCREENSHOT_NO_OVERLAY")));
+#endif
+
+    config.setInstantCaptureUseLastRegion(useLastRegion);
+    config.setInstantCaptureSave(save);
+}
+
+void SlickShotTests::testOpenWithCommandArguments()
+{
+    const QString path = QStringLiteral("C:\\Temp\\shot.png");
+
+    const QStringList spaced = launcherutils::commandArguments(
+      QStringLiteral("C:\\Program Files\\App\\app.exe %"), path);
+    QCOMPARE(spaced.size(), 2);
+    QCOMPARE(spaced.at(0), QStringLiteral("C:\\Program Files\\App\\app.exe"));
+    QCOMPARE(spaced.at(1), path);
+
+    const QStringList numbered =
+      launcherutils::commandArguments(QStringLiteral("viewer %1"), path);
+    QCOMPARE(numbered.size(), 2);
+    QCOMPARE(numbered.at(0), QStringLiteral("viewer"));
+    QCOMPARE(numbered.at(1), path);
+
+    const QStringList appended =
+      launcherutils::commandArguments(QStringLiteral("notepad"), path);
+    QCOMPARE(appended.size(), 2);
+    QCOMPARE(appended.at(1), path);
+
+    const QStringList flagged = launcherutils::commandArguments(
+      QStringLiteral("C:\\Program Files\\App\\app.exe --flag %"), path);
+    QCOMPARE(flagged.size(), 3);
+    QCOMPARE(flagged.at(0), QStringLiteral("C:\\Program Files\\App\\app.exe"));
+    QCOMPARE(flagged.at(1), QStringLiteral("--flag"));
+    QCOMPARE(flagged.at(2), path);
+
+    const QStringList quotedFlagged = launcherutils::commandArguments(
+      QStringLiteral("\"C:\\Program Files\\App\\app.exe\" --flag %"), path);
+    QCOMPARE(quotedFlagged.size(), 3);
+    QCOMPARE(quotedFlagged.at(0),
+             QStringLiteral("C:\\Program Files\\App\\app.exe"));
+    QCOMPARE(quotedFlagged.at(1), QStringLiteral("--flag"));
+    QCOMPARE(quotedFlagged.at(2), path);
+}
+
+void SlickShotTests::testEffectiveDesktopPixelRatio()
+{
+    QPixmap hiDpi(1600, 1200);
+    QCOMPARE(GeometryUtils::effectiveDesktopPixelRatio(
+               hiDpi, QRect(0, 0, 800, 600)),
+             qreal(2.0));
+
+    QPixmap oneToOne(800, 600);
+    QCOMPARE(GeometryUtils::effectiveDesktopPixelRatio(
+               oneToOne, QRect(0, 0, 800, 600)),
+             qreal(1.0));
+}
+
+void SlickShotTests::testLogicalToPhysicalDesktopMixedDpi()
+{
+    const QList<QRect> logical{
+        QRect(0, 0, 1920, 1080), QRect(1920, 0, 1280, 720) };
+    const QList<QRect> physical{
+        QRect(0, 0, 1920, 1080), QRect(1920, 0, 2560, 1440) };
+
+    // Region starts on the 100% monitor and continues onto the 200% monitor.
+    const QRect mapped = GeometryUtils::logicalToPhysicalDesktop(
+      QRect(1900, 100, 100, 100), logical, physical);
+    QCOMPARE(mapped, QRect(1900, 100, 180, 300));
 }
 
 namespace {

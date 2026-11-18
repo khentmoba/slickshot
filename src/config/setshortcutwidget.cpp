@@ -3,6 +3,7 @@
 
 #include "setshortcutwidget.h"
 #include "utils/globalvalues.h"
+#include "utils/shortcututils.h"
 
 #include <QIcon>
 #include <QKeyEvent>
@@ -46,7 +47,8 @@ SetShortcutDialog::SetShortcutDialog(QDialog* parent,
 
     auto restartMessageAdded = false;
     if ((shortcutName == "TAKE_SCREENSHOT" ||
-         shortcutName == "TAKE_SCREENSHOT_INSTANT") &&
+         shortcutName == "TAKE_SCREENSHOT_INSTANT" ||
+         shortcutName == "TAKE_SCREENSHOT_NO_OVERLAY") &&
         restartMessageAdded == false) {
         msg +=
           "\n" + tr("SlickShot must be restarted for changes to take effect.");
@@ -80,24 +82,10 @@ const QKeySequence& SetShortcutDialog::shortcut()
 
 void SetShortcutDialog::keyPressEvent(QKeyEvent* ke)
 {
-    Qt::KeyboardModifiers mods = ke->modifiers();
-
-    if (mods & Qt::ShiftModifier) {
-        m_modifier += "Shift+";
-    }
-    if (mods & Qt::ControlModifier) {
-        m_modifier += "Ctrl+";
-    }
-    if (mods & Qt::AltModifier) {
-        m_modifier += "Alt+";
-    }
-    // ke->key() == Qt::Key_Meta required on Windows to grab Win key
-    if (ke->modifiers() & Qt::MetaModifier || ke->key() == Qt::Key_Meta) {
-        m_modifier += "Meta+";
-    }
-
-    QString key = QKeySequence(ke->key()).toString();
-    m_ks = QKeySequence(m_modifier + key);
+    // Build the sequence from this event only. Accumulating modifiers across
+    // events produced sequences such as "Ctrl+Shift+Ctrl+Shift+Print" and made
+    // combinations like Ctrl+Shift+PrintScreen impossible to assign.
+    m_ks = shortcututils::sequenceFromKeyEvent(ke);
 }
 
 void SetShortcutDialog::keyReleaseEvent(QKeyEvent* event)

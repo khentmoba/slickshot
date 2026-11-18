@@ -210,6 +210,8 @@ void ShortcutsWidget::loadShortcuts()
     appendShortcut("TAKE_SCREENSHOT", tr("Capture screen"));
     appendShortcut("TAKE_SCREENSHOT_INSTANT",
                    tr("Capture region to clipboard"));
+    appendShortcut("TAKE_SCREENSHOT_NO_OVERLAY",
+                   tr("Instant capture (no overlay)"));
 #ifdef ENABLE_IMGUR
     appendShortcut("SCREENSHOT_HISTORY", tr("Screenshot history"));
 #endif
@@ -235,6 +237,8 @@ void ShortcutsWidget::loadShortcuts()
     appendShortcut("TAKE_SCREENSHOT", tr("Capture screen"));
     appendShortcut("TAKE_SCREENSHOT_INSTANT",
                    tr("Capture region to clipboard"));
+    appendShortcut("TAKE_SCREENSHOT_NO_OVERLAY",
+                   tr("Instant capture (no overlay)"));
 #ifdef ENABLE_IMGUR
     if (!ConfigHandler().replaceSnippingTool()) {
         m_shortcuts << (QStringList() << "" << QObject::tr("Screenshot history")

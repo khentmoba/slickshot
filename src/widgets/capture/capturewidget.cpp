@@ -344,6 +344,27 @@ CaptureWidget::~CaptureWidget()
         Flameshot::instance()->exportCapture(
           pixmap(), selection, m_context.request);
     } else {
+        // Optionally keep the region the user had selected even though the
+        // capture was dismissed. This makes repeated captures with the same
+        // area much faster without changing the default behaviour.
+        if (m_config.saveLastRegion() && m_config.saveLastRegionOnCancel() &&
+            m_selection != nullptr) {
+            const QRect selection =
+              m_selection->geometry().translated(m_context.widgetOffset);
+            bool coversScreen = false;
+            if (m_config.ignoreWholeScreenLastRegion()) {
+                for (const QScreen* screen : QGuiApplication::screens()) {
+                    if (selection.contains(
+                          screen->geometry().adjusted(1, 1, -1, -1))) {
+                        coversScreen = true;
+                        break;
+                    }
+                }
+            }
+            if (!selection.isEmpty() && !coversScreen) {
+                setLastRegion(selection);
+            }
+        }
         emit Flameshot::instance()->captureFailed();
     }
 }
@@ -1290,7 +1311,7 @@ void CaptureWidget::changeEvent(QEvent* e)
 
 void CaptureWidget::initContext(bool fullscreen, const CaptureRequest& req)
 {
-    m_context.color = m_config.drawColor();
+    m_context.color = m_config.toolColor(activeButtonToolType());
     m_context.widgetOffset = mapToGlobal(QPoint(0, 0));
     m_context.mousePos = mapFromGlobal(QCursor::pos());
     m_context.toolSize = m_config.drawThickness();
@@ -1505,6 +1526,8 @@ void CaptureWidget::setState(CaptureToolButton* b)
         }
         m_context.toolSize = ConfigHandler().toolSize(activeButtonToolType());
         emit toolSizeChanged(m_context.toolSize);
+        m_context.color = ConfigHandler().toolColor(activeButtonToolType());
+        emit colorChanged(m_context.color);
         updateCursor();
         updateSelectionState();
         updateTool(b->tool());
@@ -1650,7 +1673,7 @@ void CaptureWidget::setDrawColor(const QColor& c)
 {
     m_context.color = c;
     if (m_context.color.isValid()) {
-        ConfigHandler().setDrawColor(m_context.color);
+        m_config.setToolColor(activeButtonToolType(), m_context.color);
         emit colorChanged(c);
         // Update mouse preview
         updateTool(activeButtonTool());

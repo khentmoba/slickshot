@@ -37,5 +37,6 @@ private:
     static bool s_winShiftSConsumed;
     static bool s_prntScrConsumed;
     static bool s_replaceSnippingTool;
+    static bool s_intlBackslashCapture;
 #endif
 };
