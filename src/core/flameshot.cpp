@@ -127,18 +127,16 @@ QRect regionInDesktopPixmap(const QRect& region, const QPixmap& pixmap)
     for (const QRect& geometry : logicalScreens) {
         desktopLogical = desktopLogical.united(geometry);
     }
-    const QRect local = region.translated(-desktopLogical.topLeft())
-                          .intersected(QRect(0,
-                                             0,
-                                             desktopLogical.width(),
-                                             desktopLogical.height()));
+    const QRect local =
+      region.translated(-desktopLogical.topLeft())
+        .intersected(
+          QRect(0, 0, desktopLogical.width(), desktopLogical.height()));
     if (local.isEmpty()) {
         return {};
     }
     return GeometryUtils::logicalToPixmap(
              local,
-             GeometryUtils::effectiveDesktopPixelRatio(pixmap,
-                                                       desktopLogical))
+             GeometryUtils::effectiveDesktopPixelRatio(pixmap, desktopLogical))
       .translated(desktopLogical.topLeft());
 #endif
 }
@@ -195,18 +193,15 @@ Flameshot::Flameshot()
       ConfigHandler().shortcut("TAKE_SCREENSHOT_NO_OVERLAY"));
     if (!directSeq.isEmpty()) {
         m_HotkeyInstantDirect = new QHotkey(directSeq, true, this);
-        QObject::connect(m_HotkeyInstantDirect,
-                         &QHotkey::activated,
-                         qApp,
-                         [this]() {
-                             CaptureRequest req(
-                               CaptureRequest::FULLSCREEN_MODE);
-                             req.addTask(CaptureRequest::COPY);
-                             if (ConfigHandler().instantCaptureSave()) {
-                                 req.addSaveTask();
-                             }
-                             instantCapture(req);
-                         });
+        QObject::connect(
+          m_HotkeyInstantDirect, &QHotkey::activated, qApp, [this]() {
+              CaptureRequest req(CaptureRequest::FULLSCREEN_MODE);
+              req.addTask(CaptureRequest::COPY);
+              if (ConfigHandler().instantCaptureSave()) {
+                  req.addSaveTask();
+              }
+              instantCapture(req);
+          });
     }
 #endif
 #if (defined(Q_OS_MACOS) && ENABLE_IMGUR)

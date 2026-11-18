@@ -109,9 +109,7 @@ public:
     CONFIG_GETTER_SETTER(drawRectangleSize, setDrawRectangleSize, int)
     CONFIG_GETTER_SETTER(drawMarkerSize, setDrawMarkerSize, int)
     CONFIG_GETTER_SETTER(keepOpenAppLauncher, setKeepOpenAppLauncher, bool)
-    CONFIG_GETTER_SETTER(openWithDefaultApp,
-                         setOpenWithDefaultApp,
-                         QString)
+    CONFIG_GETTER_SETTER(openWithDefaultApp, setOpenWithDefaultApp, QString)
     CONFIG_GETTER_SETTER(instantCaptureUseLastRegion,
                          setInstantCaptureUseLastRegion,
                          bool)
@@ -155,7 +153,9 @@ public:
     CONFIG_GETTER_SETTER(copyOnDoubleClick, setCopyOnDoubleClick, bool)
     CONFIG_GETTER_SETTER(uploadClientSecret, setUploadClientSecret, QString)
     CONFIG_GETTER_SETTER(saveLastRegion, setSaveLastRegion, bool)
-    CONFIG_GETTER_SETTER(saveLastRegionOnCancel, setSaveLastRegionOnCancel, bool)
+    CONFIG_GETTER_SETTER(saveLastRegionOnCancel,
+                         setSaveLastRegionOnCancel,
+                         bool)
     CONFIG_GETTER_SETTER(ignoreWholeScreenLastRegion,
                          setIgnoreWholeScreenLastRegion,
                          bool)

@@ -183,7 +183,8 @@ void GeneralConf::saveLastRegionOnCancel(bool checked)
 #if defined(Q_OS_WIN)
 void GeneralConf::openWithDefaultAppEdited()
 {
-    ConfigHandler().setOpenWithDefaultApp(m_openWithDefaultApp->text().trimmed());
+    ConfigHandler().setOpenWithDefaultApp(
+      m_openWithDefaultApp->text().trimmed());
 }
 #endif
 

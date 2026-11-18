@@ -60,8 +60,7 @@ qreal effectiveDesktopPixelRatio(const QPixmap& pixmap,
     }
     // windowsScreenshot returns physical pixels with a DPR of 1.0, so derive
     // the ratio from the pixmap size relative to the logical desktop.
-    const qreal ratioX =
-      qreal(pixmap.width()) / qreal(desktopLogical.width());
+    const qreal ratioX = qreal(pixmap.width()) / qreal(desktopLogical.width());
     const qreal ratioY =
       qreal(pixmap.height()) / qreal(desktopLogical.height());
     return qMax(1.0, qMax(ratioX, ratioY));
@@ -87,10 +86,8 @@ QRect logicalToPhysicalDesktop(const QRect& logicalRegion,
         if (part.isEmpty()) {
             continue;
         }
-        const qreal scaleX =
-          qreal(physical.width()) / qreal(logical.width());
-        const qreal scaleY =
-          qreal(physical.height()) / qreal(logical.height());
+        const qreal scaleX = qreal(physical.width()) / qreal(logical.width());
+        const qreal scaleY = qreal(physical.height()) / qreal(logical.height());
         const QRect mapped(
           physical.x() + qRound((part.x() - logical.x()) * scaleX),
           physical.y() + qRound((part.y() - logical.y()) * scaleY),

@@ -92,8 +92,7 @@ LRESULT CALLBACK GlobalShortcutFilter::lowLevelKeyboardProc(int nCode,
                           qApp,
                           []() {
                               Flameshot::instance()->requestCapture(
-                                CaptureRequest(
-                                  CaptureRequest::GRAPHICAL_MODE));
+                                CaptureRequest(CaptureRequest::GRAPHICAL_MODE));
                           },
                           Qt::QueuedConnection);
                     }
@@ -229,29 +228,30 @@ GlobalShortcutFilter::GlobalShortcutFilter(QObject* parent)
 #if defined(Q_OS_WIN)
     s_filterInstance = this;
     s_replaceSnippingTool = ConfigHandler().replaceSnippingTool();
-    s_intlBackslashCapture = shortcututils::needsIntlBackslashFallback(
-      QKeySequence(
+    s_intlBackslashCapture =
+      shortcututils::needsIntlBackslashFallback(QKeySequence(
         ConfigHandler().shortcut(QStringLiteral("TAKE_SCREENSHOT"))));
     s_keyboardHook = SetWindowsHookEx(
       WH_KEYBOARD_LL, lowLevelKeyboardProc, GetModuleHandle(NULL), 0);
 
     syncHotkeys();
 
-    connect(ConfigHandler::getInstance(),
-            &ConfigHandler::fileChanged,
-            this,
-            [this]() {
-                bool newVal = ConfigHandler().replaceSnippingTool();
-                s_intlBackslashCapture =
-                  shortcututils::needsIntlBackslashFallback(QKeySequence(
-                    ConfigHandler().shortcut(QStringLiteral("TAKE_SCREENSHOT"))));
-                if (newVal != s_replaceSnippingTool) {
-                    s_replaceSnippingTool = newVal;
-                    s_winShiftSConsumed = false;
-                    s_prntScrConsumed = false;
-                    syncHotkeys();
-                }
-            });
+    connect(
+      ConfigHandler::getInstance(),
+      &ConfigHandler::fileChanged,
+      this,
+      [this]() {
+          bool newVal = ConfigHandler().replaceSnippingTool();
+          s_intlBackslashCapture =
+            shortcututils::needsIntlBackslashFallback(QKeySequence(
+              ConfigHandler().shortcut(QStringLiteral("TAKE_SCREENSHOT"))));
+          if (newVal != s_replaceSnippingTool) {
+              s_replaceSnippingTool = newVal;
+              s_winShiftSConsumed = false;
+              s_prntScrConsumed = false;
+              syncHotkeys();
+          }
+      });
 #endif
 }
 
