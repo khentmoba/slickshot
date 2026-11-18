@@ -76,6 +76,7 @@ private slots:
     void testFileNameHandlerParseFilename();
     void testProperScreenshotPathDottedDirectory();
     void testProperScreenshotPathSubfolderPattern();
+    void testSaveToFilesystemGUIKeepsBaseSavePath();
     void testSelectionWidgetStaysStationary();
     void testRegionRejectsOutOfRangeScreen();
     void testOpenWithTempFileRemovalIsDeferred();
@@ -435,6 +436,82 @@ void SlickShotTests::testProperScreenshotPathSubfolderPattern()
 
     config.setFilenamePattern(prevPattern);
     QDir(dirPath).removeRecursively();
+}
+
+void SlickShotTests::testSaveToFilesystemGUIKeepsBaseSavePath()
+{
+    ConfigHandler config;
+    const QString prevSavePath = config.savePath();
+    const bool prevFixed = config.savePathFixed();
+    const QString prevPattern = config.filenamePattern();
+    const QString prevExt = config.saveAsFileExtension();
+    const bool prevCopyPath = config.copyPathAfterSave();
+
+    const QString baseDir =
+      QDir::tempPath() + QStringLiteral("/slickshot_test_gui_save");
+    QDir(baseDir).removeRecursively();
+    QVERIFY(QDir().mkpath(baseDir));
+
+    config.setSavePath(baseDir);
+    config.setFilenamePattern(QStringLiteral("2026/11/shot"));
+    config.setSaveAsFileExtension(QStringLiteral("png"));
+    config.setCopyPathAfterSave(false);
+
+    QPixmap pixmap(16, 16);
+    pixmap.fill(Qt::red);
+
+    // 1. Non-fixed: missing patternDir falls back to baseDir for the dialog
+    //    and does not create patternDir before the user accepts.
+    config.setSavePathFixed(false);
+    QString promptedPath;
+    QVERIFY(saveToFilesystemGUI(
+      pixmap, [&](const QString&, const QString& initialPath) {
+          promptedPath = initialPath;
+          return initialPath;
+      }));
+    QCOMPARE(QFileInfo(promptedPath).absolutePath(),
+             QFileInfo(baseDir).absoluteFilePath());
+    QVERIFY(QFile::exists(promptedPath));
+    QVERIFY(!QDir(baseDir + QStringLiteral("/2026/11")).exists());
+
+    // 2. Non-fixed with existing patternDir: dialog opens in patternDir, and
+    //    saving there keeps savePath at baseDir instead of nesting into 2026/11.
+    const QString patternDir = baseDir + QStringLiteral("/2026/11");
+    QVERIFY(QDir().mkpath(patternDir));
+    config.setSavePath(baseDir);
+    QString promptedSubPath;
+    QVERIFY(saveToFilesystemGUI(
+      pixmap, [&](const QString&, const QString& initialPath) {
+          promptedSubPath = initialPath;
+          return initialPath;
+      }));
+    QCOMPARE(QFileInfo(promptedSubPath).absolutePath(),
+             QFileInfo(patternDir).absoluteFilePath());
+    QVERIFY(QFile::exists(promptedSubPath));
+    QCOMPARE(QDir(config.savePath()).absolutePath(),
+             QDir(baseDir).absolutePath());
+
+    // 3. Fixed save path: creates patternDir automatically without prompting
+    //    and keeps savePath at baseDir.
+    QDir(baseDir + QStringLiteral("/2026")).removeRecursively();
+    config.setSavePath(baseDir);
+    config.setSavePathFixed(true);
+    bool promptCalled = false;
+    QVERIFY(saveToFilesystemGUI(pixmap, [&](const QString&, const QString&) {
+        promptCalled = true;
+        return QString();
+    }));
+    QVERIFY(!promptCalled);
+    QVERIFY(QFile::exists(patternDir + QStringLiteral("/shot.png")));
+    QCOMPARE(QDir(config.savePath()).absolutePath(),
+             QDir(baseDir).absolutePath());
+
+    config.setSavePath(prevSavePath);
+    config.setSavePathFixed(prevFixed);
+    config.setFilenamePattern(prevPattern);
+    config.setSaveAsFileExtension(prevExt);
+    config.setCopyPathAfterSave(prevCopyPath);
+    QDir(baseDir).removeRecursively();
 }
 
 void SlickShotTests::testSelectionWidgetStaysStationary()

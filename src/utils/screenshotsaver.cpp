@@ -378,6 +378,14 @@ bool saveToClipboardGnomeWorkaround(const QPixmap& pixmap, QWidget* keepAlive)
 
 bool saveToFilesystemGUI(const QPixmap& capture)
 {
+    return saveToFilesystemGUI(capture, ShowSaveFileDialog);
+}
+
+bool saveToFilesystemGUI(
+  const QPixmap& capture,
+  const std::function<QString(const QString& title, const QString& path)>&
+    promptSavePath)
+{
     bool okay = false;
     ConfigHandler config;
     QString defaultSavePath = ConfigHandler().savePath();
@@ -413,7 +421,7 @@ bool saveToFilesystemGUI(const QPixmap& capture)
               QDir(defaultSavePath).filePath(QFileInfo(savePath).fileName()),
               ConfigHandler().saveAsFileExtension());
         }
-        savePath = ShowSaveFileDialog(QObject::tr("Save screenshot"), savePath);
+        savePath = promptSavePath(QObject::tr("Save screenshot"), savePath);
     } else if (!createParentDirectories(savePath)) {
         return okay;
     }
