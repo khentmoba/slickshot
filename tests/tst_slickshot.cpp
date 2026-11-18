@@ -11,6 +11,8 @@
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QKeyEvent>
+#include <QKeySequence>
 #include <QLabel>
 #include <QList>
 #include <QMap>
@@ -38,6 +40,7 @@
 #include "tools/pin/pinwidget.h"
 #include "tools/pixelate/pixelatetool.h"
 #include "tools/rectangle/rectangletool.h"
+#include "tools/text/textwidget.h"
 #include "utils/appupdate.h"
 #include "utils/filenamehandler.h"
 #include "utils/geometryutils.h"
@@ -102,6 +105,7 @@ private slots:
     void testColorGrabMapsLogicalCursorToDevicePixel();
     void testConfigWheelLeavesUnfocusedComboUnchanged();
     void testPinWidgetAcceptsTouchEvents();
+    void testTextWidgetShortcutOverrideWordDeletion();
 #if defined(Q_OS_WIN)
     void testWindowsHdrConvertScRgbToSdr();
 #endif
@@ -1332,6 +1336,31 @@ void SlickShotTests::testWindowsHdrConvertScRgbToSdr()
     }
 }
 #endif
+
+void SlickShotTests::testTextWidgetShortcutOverrideWordDeletion()
+{
+    TextWidget widget;
+    const QList<QKeySequence::StandardKey> keys = {
+        QKeySequence::DeleteStartOfWord,
+        QKeySequence::DeleteEndOfWord,
+        QKeySequence::DeleteEndOfLine,
+        QKeySequence::DeleteCompleteLine,
+    };
+
+    for (const auto standardKey : keys) {
+        const auto seqs = QKeySequence::keyBindings(standardKey);
+        if (seqs.isEmpty()) {
+            continue;
+        }
+        const QKeyCombination combo = seqs.first()[0];
+        QKeyEvent ev(QEvent::ShortcutOverride,
+                     combo.key(),
+                     combo.keyboardModifiers());
+        ev.setAccepted(false);
+        QVERIFY(QApplication::sendEvent(&widget, &ev));
+        QVERIFY(ev.isAccepted());
+    }
+}
 
 QTEST_MAIN(SlickShotTests)
 #include "tst_slickshot.moc"
