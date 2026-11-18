@@ -75,6 +75,7 @@ private slots:
     void testAppUpdateCanInstallInPlaceForPaths();
     void testFileNameHandlerParseFilename();
     void testProperScreenshotPathDottedDirectory();
+    void testProperScreenshotPathSubfolderPattern();
     void testSelectionWidgetStaysStationary();
     void testRegionRejectsOutOfRangeScreen();
     void testOpenWithTempFileRemovalIsDeferred();
@@ -345,12 +346,20 @@ void SlickShotTests::testFileNameHandlerParseFilename()
     QCOMPARE(handler.parseFilename(QStringLiteral("shot%")),
              QStringLiteral("shot"));
 
-    // Path and drive separators must never survive into a filename.
-    const QString separators =
-      handler.parseFilename(QStringLiteral("a/b\\c:d"));
-    QVERIFY(!separators.contains(QLatin1Char('/')));
-    QVERIFY(!separators.contains(QLatin1Char('\\')));
-    QVERIFY(!separators.contains(QLatin1Char(':')));
+    // Explicit '/' and '\' in the pattern act as relative subfolder
+    // separators, while ':' is sanitized and strftime-expanded slashes (e.g.
+    // %D) become '⁄' rather than creating subfolders.
+    QCOMPARE(handler.parseFilename(QStringLiteral("a/b\\c:d")),
+             QStringLiteral("a/b/c-d"));
+    const QString expandedDate = handler.parseFilename(QStringLiteral("%D"));
+    QVERIFY(!expandedDate.contains(QLatin1Char('/')));
+    QVERIFY(!expandedDate.contains(QLatin1Char('\\')));
+    QVERIFY(!expandedDate.contains(QLatin1Char(':')));
+
+    // Absolute paths and '.' / '..' traversal segments must be rejected.
+    QVERIFY(handler.parseFilename(QStringLiteral("/abs/shot")).isEmpty());
+    QVERIFY(handler.parseFilename(QStringLiteral("../escape")).isEmpty());
+    QVERIFY(handler.parseFilename(QStringLiteral("sub/./shot")).isEmpty());
 
     // Control characters are removed rather than written into a path.
     const QString control =
@@ -394,6 +403,30 @@ void SlickShotTests::testProperScreenshotPathDottedDirectory()
     QVERIFY2(path.startsWith(dirPath), qPrintable(path));
     // The directory's own suffix must not become the screenshot's extension.
     QCOMPARE(QFileInfo(path).suffix(), QStringLiteral("png"));
+    QDir(dirPath).removeRecursively();
+}
+
+void SlickShotTests::testProperScreenshotPathSubfolderPattern()
+{
+    ConfigHandler config;
+    const QString prevPattern = config.filenamePattern();
+    config.setFilenamePattern(QStringLiteral("2026/11/shot"));
+
+    FileNameHandler handler;
+    const QString dirPath =
+      QDir::tempPath() + QStringLiteral("/slickshot_test_subfolder");
+    QVERIFY(QDir().mkpath(dirPath));
+
+    const QString path =
+      handler.properScreenshotPath(dirPath, QStringLiteral("png"));
+    QCOMPARE(path, QDir(dirPath).filePath(QStringLiteral("2026/11/shot.png")));
+
+    // Invalid traversal pattern must be rejected with an empty path.
+    config.setFilenamePattern(QStringLiteral("../escape"));
+    QVERIFY(
+      handler.properScreenshotPath(dirPath, QStringLiteral("png")).isEmpty());
+
+    config.setFilenamePattern(prevPattern);
     QDir(dirPath).removeRecursively();
 }
 

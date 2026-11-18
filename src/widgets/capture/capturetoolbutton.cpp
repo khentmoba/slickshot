@@ -29,14 +29,10 @@ CaptureToolButton::CaptureToolButton(const CaptureTool::Type t, QWidget* parent)
 
 CaptureToolButton::~CaptureToolButton()
 {
-    if (m_tool) {
-        delete m_tool;
-        m_tool = nullptr;
-    }
-    if (m_emergeAnimation) {
-        delete m_emergeAnimation;
-        m_emergeAnimation = nullptr;
-    }
+    delete m_tool;
+    m_tool = nullptr;
+    delete m_emergeAnimation;
+    m_emergeAnimation = nullptr;
 }
 
 void CaptureToolButton::initButton()
