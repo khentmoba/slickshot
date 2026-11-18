@@ -4,6 +4,7 @@
 #include "textwidget.h"
 
 #include <QEvent>
+#include <QGraphicsDropShadowEffect>
 #include <QKeyEvent>
 #include <QKeySequence>
 
@@ -89,6 +90,25 @@ void TextWidget::setTextColor(const QColor& c)
     QString s(
       QStringLiteral("TextWidget { background: transparent; color: %1; }"));
     setStyleSheet(s.arg(c.name()));
+    if (m_shadowEffect) {
+        m_shadowEffect->setColor(QColor(0, 0, 0, 200));
+    }
+}
+
+void TextWidget::setShadow(bool shadow)
+{
+    if (shadow) {
+        if (!m_shadowEffect) {
+            m_shadowEffect = new QGraphicsDropShadowEffect(this);
+            m_shadowEffect->setBlurRadius(4);
+            m_shadowEffect->setOffset(1.5, 1.5);
+            setGraphicsEffect(m_shadowEffect);
+        }
+        m_shadowEffect->setColor(QColor(0, 0, 0, 200));
+        m_shadowEffect->setEnabled(true);
+    } else if (m_shadowEffect) {
+        m_shadowEffect->setEnabled(false);
+    }
 }
 
 void TextWidget::adjustSize()

@@ -52,6 +52,7 @@ GeneralConf::GeneralConf(QWidget* parent)
     initSaveAfterCopy();
     initCopyPathAfterSave();
     initAntialiasingPinZoom();
+    initPinShadow();
     initUndoLimit();
     initInsecurePixelate();
 #if !defined(Q_OS_MACOS)
@@ -79,6 +80,7 @@ GeneralConf::GeneralConf(QWidget* parent)
     initSquareMagnifier();
     initJpegQuality();
     initReverseArrow();
+    initDrawTextShadow();
     initDrawCircleCounterOutline();
     // this has to be at the end
     initConfigButtons();
@@ -96,6 +98,7 @@ void GeneralConf::_updateComponents(bool allowEmptySavePath)
     m_saveAfterCopy->setChecked(config.saveAfterCopy());
     m_copyPathAfterSave->setChecked(config.copyPathAfterSave());
     m_antialiasingPinZoom->setChecked(config.antialiasingPinZoom());
+    m_pinShadow->setChecked(config.pinShadow());
     m_useJpgForClipboard->setChecked(config.useJpgForClipboard());
     m_copyOnDoubleClick->setChecked(config.copyOnDoubleClick());
 #ifdef ENABLE_IMGUR
@@ -113,7 +116,11 @@ void GeneralConf::_updateComponents(bool allowEmptySavePath)
     m_showMagnifier->setChecked(config.showMagnifier());
     m_squareMagnifier->setChecked(config.squareMagnifier());
     m_saveLastRegion->setChecked(config.saveLastRegion());
+    m_ignoreWholeScreenLastRegion->setChecked(
+      config.ignoreWholeScreenLastRegion());
+    m_ignoreWholeScreenLastRegion->setEnabled(config.saveLastRegion());
     m_reverseArrow->setChecked(config.reverseArrow());
+    m_drawTextShadow->setChecked(config.drawTextShadow());
     m_drawCircleCounterOutline->setChecked(config.drawCircleCounterOutline());
     m_autoCloseIdleDaemon->setChecked(config.autoCloseIdleDaemon());
     m_predefinedColorPaletteLarge->setChecked(
@@ -148,6 +155,12 @@ void GeneralConf::updateComponents()
 void GeneralConf::saveLastRegion(bool checked)
 {
     ConfigHandler().setSaveLastRegion(checked);
+    m_ignoreWholeScreenLastRegion->setEnabled(checked);
+}
+
+void GeneralConf::ignoreWholeScreenLastRegion(bool checked)
+{
+    ConfigHandler().setIgnoreWholeScreenLastRegion(checked);
 }
 
 void GeneralConf::showHelpChanged(bool checked)
@@ -299,6 +312,18 @@ void GeneralConf::initSaveLastRegion()
             &QCheckBox::clicked,
             this,
             &GeneralConf::saveLastRegion);
+
+    m_ignoreWholeScreenLastRegion = new QCheckBox(
+      tr("Ignore last region when it covers the whole screen"), this);
+    m_ignoreWholeScreenLastRegion->setToolTip(
+      tr("Start with no selection if the last region was the entire screen, "
+         "so a new region can be drawn right away"));
+    m_scrollAreaLayout->addWidget(m_ignoreWholeScreenLastRegion);
+
+    connect(m_ignoreWholeScreenLastRegion,
+            &QCheckBox::clicked,
+            this,
+            &GeneralConf::ignoreWholeScreenLastRegion);
 }
 
 void GeneralConf::initShowSidePanelButton()
@@ -724,6 +749,18 @@ void GeneralConf::initAntialiasingPinZoom()
     });
 }
 
+void GeneralConf::initPinShadow()
+{
+    m_pinShadow =
+      new QCheckBox(tr("Show drop shadow around the pinned image"), this);
+    m_pinShadow->setToolTip(
+      tr("Show or hide the drop shadow around the pinned image"));
+    m_scrollAreaLayout->addWidget(m_pinShadow);
+    connect(m_pinShadow, &QCheckBox::clicked, [](bool checked) {
+        ConfigHandler().setPinShadow(checked);
+    });
+}
+
 void GeneralConf::initUploadWithoutConfirmation()
 {
     m_uploadWithoutConfirmation =
@@ -937,6 +974,26 @@ void GeneralConf::setReverseArrow(bool checked)
 void GeneralConf::setInsecurePixelate(bool checked)
 {
     ConfigHandler().setInsecurePixelate(checked);
+}
+
+void GeneralConf::initDrawTextShadow()
+{
+    m_drawTextShadow = new QCheckBox(tr("Text tool shadow"), this);
+    m_drawTextShadow->setToolTip(
+      tr("Draw a shadow under text to improve readability against contrasting "
+         "backgrounds."));
+    m_drawTextShadow->setChecked(ConfigHandler().drawTextShadow());
+    m_scrollAreaLayout->addWidget(m_drawTextShadow);
+
+    connect(m_drawTextShadow,
+            &QCheckBox::clicked,
+            this,
+            &GeneralConf::setDrawTextShadow);
+}
+
+void GeneralConf::setDrawTextShadow(bool checked)
+{
+    ConfigHandler().setDrawTextShadow(checked);
 }
 
 #if !defined(Q_OS_MACOS)

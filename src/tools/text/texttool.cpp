@@ -18,6 +18,7 @@ TextTool::TextTool(QObject* parent)
         m_font.setFamily(ConfigHandler().fontFamily());
     }
     m_alignment = Qt::AlignLeft;
+    m_shadow = ConfigHandler().drawTextShadow();
 }
 
 TextTool::~TextTool()
@@ -30,6 +31,7 @@ void TextTool::copyParams(const TextTool* from, TextTool* to)
     CaptureTool::copyParams(from, to);
     to->m_font = from->m_font;
     to->m_alignment = from->m_alignment;
+    to->m_shadow = from->m_shadow;
     to->m_text = from->m_text;
     to->m_size = from->m_size;
     to->m_color = from->m_color;
@@ -105,6 +107,7 @@ QWidget* TextTool::widget()
     m_font.setPointSize(m_size + BASE_POINT_SIZE);
     m_widget->setFont(m_font);
     m_widget->setAlignment(m_alignment);
+    m_widget->setShadow(m_shadow);
     m_widget->setText(m_text);
     m_widget->selectAll();
     connect(m_widget, &TextWidget::textUpdated, this, &TextTool::updateText);
@@ -152,6 +155,10 @@ QWidget* TextTool::configurationWidget()
             &TextConfig::fontWeightChanged,
             this,
             &TextTool::updateFontWeight);
+    connect(m_confW,
+            &TextConfig::fontShadowChanged,
+            this,
+            &TextTool::updateFontShadow);
 
     connect(
       m_confW, &TextConfig::alignmentChanged, this, &TextTool::updateAlignment);
@@ -161,6 +168,7 @@ QWidget* TextTool::configurationWidget()
     m_confW->setUnderline(m_font.underline());
     m_confW->setStrikeOut(m_font.strikeOut());
     m_confW->setWeight(m_font.weight());
+    m_confW->setShadow(m_shadow);
     m_confW->setTextAlignment(m_alignment);
     return m_confW;
 }
@@ -189,6 +197,10 @@ CaptureTool* TextTool::copy(QObject* parent)
                 &TextConfig::fontWeightChanged,
                 textTool,
                 &TextTool::updateFontWeight);
+        connect(m_confW,
+                &TextConfig::fontShadowChanged,
+                textTool,
+                &TextTool::updateFontShadow);
 
         connect(m_confW,
                 &TextConfig::alignmentChanged,
@@ -214,11 +226,34 @@ void TextTool::process(QPainter& painter, const QPixmap& pixmap)
     fontsize.setHeight(fontsize.height() + val * 2);
     m_textArea.setSize(fontsize);
     // draw text
-    painter.setFont(m_font);
-    painter.setPen(m_color);
     if (!editMode()) {
-        painter.drawText(
-          m_textArea + QMargins(-val, -val, val, val), m_alignment, m_text);
+        painter.setFont(m_font);
+        const QRect baseRect = m_textArea + QMargins(-val, -val, val, val);
+        if (m_shadow) {
+            const int shadowOffset = qMax(1, m_font.pointSize() / 10);
+
+            // Light halo to ensure legibility on dark or mid-grey backgrounds.
+            painter.setPen(QColor(255, 255, 255, 180));
+            painter.drawText(baseRect.translated(-shadowOffset, -shadowOffset),
+                             m_alignment,
+                             m_text);
+            painter.drawText(
+              baseRect.translated(-shadowOffset, 0), m_alignment, m_text);
+            painter.drawText(
+              baseRect.translated(0, -shadowOffset), m_alignment, m_text);
+
+            // Dark drop shadow to ensure legibility on light backgrounds.
+            painter.setPen(QColor(0, 0, 0, 180));
+            painter.drawText(baseRect.translated(shadowOffset, shadowOffset),
+                             m_alignment,
+                             m_text);
+            painter.drawText(
+              baseRect.translated(shadowOffset, 0), m_alignment, m_text);
+            painter.drawText(
+              baseRect.translated(0, shadowOffset), m_alignment, m_text);
+        }
+        painter.setPen(m_color);
+        painter.drawText(baseRect, m_alignment, m_text);
     }
     painter.setFont(orig_font);
     painter.setPen(orig_pen);
@@ -327,6 +362,17 @@ void TextTool::updateFontItalic(const bool italic)
     m_font.setItalic(italic);
     if (m_widget != nullptr) {
         m_widget->setFont(m_font);
+    }
+}
+
+void TextTool::updateFontShadow(const bool shadow)
+{
+    m_shadow = shadow;
+    if (m_textOld.isEmpty()) {
+        ConfigHandler().setDrawTextShadow(m_shadow);
+    }
+    if (m_widget != nullptr) {
+        m_widget->setShadow(m_shadow);
     }
 }
 

@@ -86,20 +86,33 @@ void raiseAboveMenuBar(QWidget* widget)
 #include <QEventLoop>
 #include <QFile>
 #include <QMessageBox>
+#include <QScreen>
 #include <QThread>
 #include <QTimer>
 #include <QUrl>
 #include <QVersionNumber>
 
-#if defined(Q_OS_MACOS)
-#include <QScreen>
-#endif
+namespace {
+
+bool coversWholeScreen(const QRect& region)
+{
+    for (const QScreen* screen : QGuiApplication::screens()) {
+        // getLastRegion() stores logical virtual-desktop coordinates.
+        if (region.contains(screen->geometry().adjusted(1, 1, -1, -1))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
 
 Flameshot::Flameshot()
   : m_haveExternalWidget(false)
   , m_captureWindow(nullptr)
 #if (defined(Q_OS_MACOS) || defined(Q_OS_WIN))
   , m_HotkeyScreenshotCapture(nullptr)
+  , m_HotkeyScreenshotCaptureInstant(nullptr)
 #endif
 #if (defined(Q_OS_MACOS) && ENABLE_IMGUR)
   , m_HotkeyScreenshotHistory(nullptr)
@@ -122,6 +135,21 @@ Flameshot::Flameshot()
                      &QHotkey::activated,
                      qApp,
                      [this]() { gui(); });
+    const QKeySequence instantSeq(
+      ConfigHandler().shortcut("TAKE_SCREENSHOT_INSTANT"));
+    if (!instantSeq.isEmpty()) {
+        m_HotkeyScreenshotCaptureInstant =
+          new QHotkey(instantSeq, true, this);
+        QObject::connect(m_HotkeyScreenshotCaptureInstant,
+                         &QHotkey::activated,
+                         qApp,
+                         [this]() {
+                             CaptureRequest req(CaptureRequest::GRAPHICAL_MODE);
+                             req.addTask(CaptureRequest::COPY);
+                             req.addTask(CaptureRequest::ACCEPT_ON_SELECT);
+                             gui(req);
+                         });
+    }
 #endif
 #if (defined(Q_OS_MACOS) && ENABLE_IMGUR)
     m_HotkeyScreenshotHistory = new QHotkey(
@@ -149,7 +177,11 @@ CaptureWidget* Flameshot::gui(const CaptureRequest& req)
     if (request.captureMode() == CaptureRequest::GRAPHICAL_MODE &&
         request.initialSelection().isNull() &&
         ConfigHandler().saveLastRegion()) {
-        request.setInitialSelection(getLastRegion());
+        const QRect lastRegion = getLastRegion();
+        if (!ConfigHandler().ignoreWholeScreenLastRegion() ||
+            !coversWholeScreen(lastRegion)) {
+            request.setInitialSelection(lastRegion);
+        }
     }
 
 #if defined(Q_OS_MACOS)

@@ -9,6 +9,7 @@ target_sources(
           valuehandler.h
           themeutils.h
           snippingtoolmanager.h
+          windowpicker.h
           strfparse.h
 )
 
@@ -31,6 +32,7 @@ target_sources(
           themeutils.cpp
           snippingtoolmanager.cpp
           history.cpp
+          windowpicker.cpp
           strfparse.cpp
 )
 
