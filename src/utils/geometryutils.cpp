@@ -49,6 +49,55 @@ QRect logicalRectForPixmap(const QRect& rect, const QPixmap& pixmap)
     return logicalToPixmap(rect, pixmap.devicePixelRatio());
 }
 
+qreal effectiveDesktopPixelRatio(const QPixmap& pixmap,
+                                 const QRect& desktopLogical)
+{
+    if (pixmap.isNull() || desktopLogical.isEmpty()) {
+        return 1.0;
+    }
+    if (pixmap.devicePixelRatio() > 1.0) {
+        return pixmap.devicePixelRatio();
+    }
+    // windowsScreenshot returns physical pixels with a DPR of 1.0, so derive
+    // the ratio from the pixmap size relative to the logical desktop.
+    const qreal ratioX = qreal(pixmap.width()) / qreal(desktopLogical.width());
+    const qreal ratioY =
+      qreal(pixmap.height()) / qreal(desktopLogical.height());
+    return qMax(1.0, qMax(ratioX, ratioY));
+}
+
+QRect logicalToPhysicalDesktop(const QRect& logicalRegion,
+                               const QList<QRect>& logicalScreens,
+                               const QList<QRect>& physicalScreens)
+{
+    QRect result;
+    if (logicalRegion.isEmpty() ||
+        logicalScreens.size() != physicalScreens.size()) {
+        return result;
+    }
+
+    for (int i = 0; i < logicalScreens.size(); ++i) {
+        const QRect& logical = logicalScreens.at(i);
+        const QRect& physical = physicalScreens.at(i);
+        if (logical.isEmpty() || physical.isEmpty()) {
+            continue;
+        }
+        const QRect part = logicalRegion.intersected(logical);
+        if (part.isEmpty()) {
+            continue;
+        }
+        const qreal scaleX = qreal(physical.width()) / qreal(logical.width());
+        const qreal scaleY = qreal(physical.height()) / qreal(logical.height());
+        const QRect mapped(
+          physical.x() + qRound((part.x() - logical.x()) * scaleX),
+          physical.y() + qRound((part.y() - logical.y()) * scaleY),
+          qRound(part.width() * scaleX),
+          qRound(part.height() * scaleY));
+        result = result.isEmpty() ? mapped : result.united(mapped);
+    }
+    return result;
+}
+
 RegionMapping mapRegionToScreen(const QRect& requested,
                                 const QRect& screenLogical,
                                 const QPixmap& pixmap)

@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <QList>
 #include <QRect>
 
 class QPixmap;
@@ -19,6 +20,11 @@ struct RegionMapping
 QRect logicalToPixmap(const QRect& rect, qreal dpr);
 QRect pixmapToLogical(const QRect& rect, qreal dpr);
 QRect logicalRectForPixmap(const QRect& rect, const QPixmap& pixmap);
+qreal effectiveDesktopPixelRatio(const QPixmap& pixmap,
+                                 const QRect& desktopLogical);
+QRect logicalToPhysicalDesktop(const QRect& logicalRegion,
+                               const QList<QRect>& logicalScreens,
+                               const QList<QRect>& physicalScreens);
 RegionMapping mapRegionToScreen(const QRect& requested,
                                 const QRect& screenLogical,
                                 const QPixmap& pixmap);

@@ -45,6 +45,12 @@ GeneralConf::GeneralConf(QWidget* parent)
     initShowQuitPrompt();
     initAllowMultipleGuiInstances();
     initSaveLastRegion();
+#if defined(Q_OS_WIN)
+    initOpenWithDefaultApp();
+#endif
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    initInstantCapture();
+#endif
     initShowHelp();
     initShowSidePanelButton();
     initUseJpgForClipboard();
@@ -116,6 +122,16 @@ void GeneralConf::_updateComponents(bool allowEmptySavePath)
     m_showMagnifier->setChecked(config.showMagnifier());
     m_squareMagnifier->setChecked(config.squareMagnifier());
     m_saveLastRegion->setChecked(config.saveLastRegion());
+    m_saveLastRegionOnCancel->setChecked(config.saveLastRegionOnCancel());
+    m_saveLastRegionOnCancel->setEnabled(config.saveLastRegion());
+#if defined(Q_OS_WIN)
+    m_openWithDefaultApp->setText(config.openWithDefaultApp());
+#endif
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    m_instantCaptureUseLastRegion->setChecked(
+      config.instantCaptureUseLastRegion());
+    m_instantCaptureSave->setChecked(config.instantCaptureSave());
+#endif
     m_ignoreWholeScreenLastRegion->setChecked(
       config.ignoreWholeScreenLastRegion());
     m_ignoreWholeScreenLastRegion->setEnabled(config.saveLastRegion());
@@ -155,8 +171,34 @@ void GeneralConf::updateComponents()
 void GeneralConf::saveLastRegion(bool checked)
 {
     ConfigHandler().setSaveLastRegion(checked);
+    m_saveLastRegionOnCancel->setEnabled(checked);
     m_ignoreWholeScreenLastRegion->setEnabled(checked);
 }
+
+void GeneralConf::saveLastRegionOnCancel(bool checked)
+{
+    ConfigHandler().setSaveLastRegionOnCancel(checked);
+}
+
+#if defined(Q_OS_WIN)
+void GeneralConf::openWithDefaultAppEdited()
+{
+    ConfigHandler().setOpenWithDefaultApp(
+      m_openWithDefaultApp->text().trimmed());
+}
+#endif
+
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+void GeneralConf::instantCaptureUseLastRegion(bool checked)
+{
+    ConfigHandler().setInstantCaptureUseLastRegion(checked);
+}
+
+void GeneralConf::instantCaptureSave(bool checked)
+{
+    ConfigHandler().setInstantCaptureSave(checked);
+}
+#endif
 
 void GeneralConf::ignoreWholeScreenLastRegion(bool checked)
 {
@@ -313,6 +355,18 @@ void GeneralConf::initSaveLastRegion()
             this,
             &GeneralConf::saveLastRegion);
 
+    m_saveLastRegionOnCancel = new QCheckBox(
+      tr("Also remember the region when the capture is cancelled"), this);
+    m_saveLastRegionOnCancel->setToolTip(
+      tr("Keep the selected region for the next capture even when the current "
+         "capture is dismissed without saving"));
+    m_scrollAreaLayout->addWidget(m_saveLastRegionOnCancel);
+
+    connect(m_saveLastRegionOnCancel,
+            &QCheckBox::clicked,
+            this,
+            &GeneralConf::saveLastRegionOnCancel);
+
     m_ignoreWholeScreenLastRegion = new QCheckBox(
       tr("Ignore last region when it covers the whole screen"), this);
     m_ignoreWholeScreenLastRegion->setToolTip(
@@ -325,6 +379,65 @@ void GeneralConf::initSaveLastRegion()
             this,
             &GeneralConf::ignoreWholeScreenLastRegion);
 }
+
+#if defined(Q_OS_WIN)
+void GeneralConf::initOpenWithDefaultApp()
+{
+    auto* box = new QGroupBox(tr("Open With"), this);
+    box->setFlat(true);
+    m_layout->addWidget(box);
+
+    auto* layout = new QVBoxLayout(box);
+    auto* hint = new QLabel(
+      tr("Default application for Open With. Leave empty to use the Windows "
+         "picker. Use % for the screenshot path."),
+      box);
+    hint->setWordWrap(true);
+    layout->addWidget(hint);
+
+    m_openWithDefaultApp = new QLineEdit(box);
+    m_openWithDefaultApp->setPlaceholderText(
+      tr("e.g. C:\\Program Files\\App\\app.exe %"));
+    layout->addWidget(m_openWithDefaultApp);
+
+    connect(m_openWithDefaultApp,
+            &QLineEdit::editingFinished,
+            this,
+            &GeneralConf::openWithDefaultAppEdited);
+}
+#endif
+
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+void GeneralConf::initInstantCapture()
+{
+    auto* box = new QGroupBox(tr("Instant capture (no overlay)"), this);
+    box->setFlat(true);
+    m_layout->addWidget(box);
+
+    auto* layout = new QVBoxLayout(box);
+    auto* hint = new QLabel(
+      tr("Assign a global shortcut named \"Instant capture (no overlay)\" in "
+         "the Shortcuts tab. The capture is copied immediately."),
+      box);
+    hint->setWordWrap(true);
+    layout->addWidget(hint);
+
+    m_instantCaptureUseLastRegion =
+      new QCheckBox(tr("Use the last region instead of the full desktop"), box);
+    layout->addWidget(m_instantCaptureUseLastRegion);
+    connect(m_instantCaptureUseLastRegion,
+            &QCheckBox::clicked,
+            this,
+            &GeneralConf::instantCaptureUseLastRegion);
+
+    m_instantCaptureSave = new QCheckBox(tr("Also save instant captures"), box);
+    layout->addWidget(m_instantCaptureSave);
+    connect(m_instantCaptureSave,
+            &QCheckBox::clicked,
+            this,
+            &GeneralConf::instantCaptureSave);
+}
+#endif
 
 void GeneralConf::initShowSidePanelButton()
 {

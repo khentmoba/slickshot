@@ -4,6 +4,7 @@
 #include "globalshortcutfilter.h"
 #include "core/flameshot.h"
 #include "utils/confighandler.h"
+#include "utils/shortcututils.h"
 
 #include <QApplication>
 #include <QElapsedTimer>
@@ -19,6 +20,7 @@ GlobalShortcutFilter* GlobalShortcutFilter::s_filterInstance = nullptr;
 bool GlobalShortcutFilter::s_winShiftSConsumed = false;
 bool GlobalShortcutFilter::s_prntScrConsumed = false;
 bool GlobalShortcutFilter::s_replaceSnippingTool = false;
+bool GlobalShortcutFilter::s_intlBackslashCapture = false;
 
 LRESULT CALLBACK GlobalShortcutFilter::lowLevelKeyboardProc(int nCode,
                                                             WPARAM wParam,
@@ -36,7 +38,13 @@ LRESULT CALLBACK GlobalShortcutFilter::lowLevelKeyboardProc(int nCode,
         // so the next press is still able to trigger a capture.
         static QElapsedTimer winShiftConsumedAt;
         static QElapsedTimer prntScrConsumedAt;
+        static QElapsedTimer intlBackslashConsumedAt;
+        static bool intlBackslashConsumed = false;
         constexpr qint64 consumedTimeoutMs = 5000;
+        if (intlBackslashConsumed &&
+            intlBackslashConsumedAt.hasExpired(consumedTimeoutMs)) {
+            intlBackslashConsumed = false;
+        }
         if (s_winShiftSConsumed &&
             winShiftConsumedAt.hasExpired(consumedTimeoutMs)) {
             s_winShiftSConsumed = false;
@@ -56,6 +64,46 @@ LRESULT CALLBACK GlobalShortcutFilter::lowLevelKeyboardProc(int nCode,
              pKey->vkCode == VK_RMENU)) {
             s_winShiftSConsumed = false;
             s_prntScrConsumed = false;
+            intlBackslashConsumed = false;
+        }
+
+        // ISO layouts report the key between Left Shift and Z as VK_OEM_102
+        // (scan code 0x56), while Qt maps it to Key_Backslash and QHotkey
+        // registers VK_OEM_5. When Ctrl+\  is the capture shortcut, honour the
+        // physical key as well so the configured hotkey actually works.
+        if (s_intlBackslashCapture && pKey->vkCode == VK_OEM_102) {
+            if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
+                const bool ctrlDown =
+                  (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+                const bool shiftDown =
+                  (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+                const bool altDown = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+                const bool winDown =
+                  ((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0) ||
+                  ((GetAsyncKeyState(VK_RWIN) & 0x8000) != 0);
+                if (ctrlDown && !shiftDown && !altDown && !winDown) {
+                    const bool isRepeat =
+                      intlBackslashConsumed &&
+                      ((GetAsyncKeyState(VK_OEM_102) & 0x8000) != 0);
+                    intlBackslashConsumed = true;
+                    intlBackslashConsumedAt.start();
+                    if (!isRepeat) {
+                        QMetaObject::invokeMethod(
+                          qApp,
+                          []() {
+                              Flameshot::instance()->requestCapture(
+                                CaptureRequest(CaptureRequest::GRAPHICAL_MODE));
+                          },
+                          Qt::QueuedConnection);
+                    }
+                    return 1;
+                }
+            } else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
+                if (intlBackslashConsumed) {
+                    intlBackslashConsumed = false;
+                    return 1;
+                }
+            }
         }
 
         if (s_replaceSnippingTool) {
@@ -180,23 +228,30 @@ GlobalShortcutFilter::GlobalShortcutFilter(QObject* parent)
 #if defined(Q_OS_WIN)
     s_filterInstance = this;
     s_replaceSnippingTool = ConfigHandler().replaceSnippingTool();
+    s_intlBackslashCapture =
+      shortcututils::needsIntlBackslashFallback(QKeySequence(
+        ConfigHandler().shortcut(QStringLiteral("TAKE_SCREENSHOT"))));
     s_keyboardHook = SetWindowsHookEx(
       WH_KEYBOARD_LL, lowLevelKeyboardProc, GetModuleHandle(NULL), 0);
 
     syncHotkeys();
 
-    connect(ConfigHandler::getInstance(),
-            &ConfigHandler::fileChanged,
-            this,
-            [this]() {
-                bool newVal = ConfigHandler().replaceSnippingTool();
-                if (newVal != s_replaceSnippingTool) {
-                    s_replaceSnippingTool = newVal;
-                    s_winShiftSConsumed = false;
-                    s_prntScrConsumed = false;
-                    syncHotkeys();
-                }
-            });
+    connect(
+      ConfigHandler::getInstance(),
+      &ConfigHandler::fileChanged,
+      this,
+      [this]() {
+          bool newVal = ConfigHandler().replaceSnippingTool();
+          s_intlBackslashCapture =
+            shortcututils::needsIntlBackslashFallback(QKeySequence(
+              ConfigHandler().shortcut(QStringLiteral("TAKE_SCREENSHOT"))));
+          if (newVal != s_replaceSnippingTool) {
+              s_replaceSnippingTool = newVal;
+              s_winShiftSConsumed = false;
+              s_prntScrConsumed = false;
+              syncHotkeys();
+          }
+      });
 #endif
 }
 

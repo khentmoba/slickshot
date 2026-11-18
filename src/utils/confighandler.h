@@ -79,6 +79,13 @@ public:
     CONFIG_GETTER_SETTER(uiColor, setUiColor, QColor)
     CONFIG_GETTER_SETTER(contrastUiColor, setContrastUiColor, QColor)
     CONFIG_GETTER_SETTER(drawColor, setDrawColor, QColor)
+    CONFIG_GETTER_SETTER(drawTextColor, setDrawTextColor, QColor)
+    CONFIG_GETTER_SETTER(drawRectangleColor, setDrawRectangleColor, QColor)
+    CONFIG_GETTER_SETTER(drawMarkerColor, setDrawMarkerColor, QColor)
+    CONFIG_GETTER_SETTER(drawPixelateColor, setDrawPixelateColor, QColor)
+    CONFIG_GETTER_SETTER(drawCircleCounterColor,
+                         setDrawCircleCounterColor,
+                         QColor)
     CONFIG_GETTER_SETTER(predefinedColorPaletteLarge,
                          setPredefinedColorPaletteLarge,
                          bool)
@@ -102,6 +109,11 @@ public:
     CONFIG_GETTER_SETTER(drawRectangleSize, setDrawRectangleSize, int)
     CONFIG_GETTER_SETTER(drawMarkerSize, setDrawMarkerSize, int)
     CONFIG_GETTER_SETTER(keepOpenAppLauncher, setKeepOpenAppLauncher, bool)
+    CONFIG_GETTER_SETTER(openWithDefaultApp, setOpenWithDefaultApp, QString)
+    CONFIG_GETTER_SETTER(instantCaptureUseLastRegion,
+                         setInstantCaptureUseLastRegion,
+                         bool)
+    CONFIG_GETTER_SETTER(instantCaptureSave, setInstantCaptureSave, bool)
 #if !defined(DISABLE_UPDATE_CHECKER)
     CONFIG_GETTER_SETTER(checkForUpdates, setCheckForUpdates, bool)
 #endif
@@ -141,6 +153,9 @@ public:
     CONFIG_GETTER_SETTER(copyOnDoubleClick, setCopyOnDoubleClick, bool)
     CONFIG_GETTER_SETTER(uploadClientSecret, setUploadClientSecret, QString)
     CONFIG_GETTER_SETTER(saveLastRegion, setSaveLastRegion, bool)
+    CONFIG_GETTER_SETTER(saveLastRegionOnCancel,
+                         setSaveLastRegionOnCancel,
+                         bool)
     CONFIG_GETTER_SETTER(ignoreWholeScreenLastRegion,
                          setIgnoreWholeScreenLastRegion,
                          bool)
@@ -174,6 +189,8 @@ public:
     void setAllTheButtons();
     void setToolSize(CaptureTool::Type toolType, int size);
     int toolSize(CaptureTool::Type toolType);
+    void setToolColor(CaptureTool::Type toolType, const QColor& color);
+    QColor toolColor(CaptureTool::Type toolType);
 
     // DEFAULTS
     QString filenamePatternDefault();
@@ -219,6 +236,7 @@ private:
     static QSharedPointer<QFileSystemWatcher> m_configWatcher;
 
     void ensureFileWatched() const;
+    QColor colorForKey(const QString& key);
     QSharedPointer<ValueHandler> valueHandler(const QString& key) const;
     void assertKeyRecognized(const QString& key) const;
     bool isShortcut(const QString& key) const;

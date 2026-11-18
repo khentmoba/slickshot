@@ -51,6 +51,7 @@ public slots:
       const CaptureRequest& req = CaptureRequest::GRAPHICAL_MODE);
     void screen(CaptureRequest req, int const screenNumber = -1);
     void full(const CaptureRequest& req);
+    void instantCapture(const CaptureRequest& req);
     void launcher();
     void config();
 
@@ -106,6 +107,7 @@ private:
 #if (defined(Q_OS_MACOS) || defined(Q_OS_WIN))
     QHotkey* m_HotkeyScreenshotCapture;
     QHotkey* m_HotkeyScreenshotCaptureInstant;
+    QHotkey* m_HotkeyInstantDirect;
 #endif
 #if (defined(Q_OS_MACOS) && ENABLE_IMGUR)
     QHotkey* m_HotkeyScreenshotHistory;

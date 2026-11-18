@@ -29,6 +29,5 @@ private:
     void startCapture();
 
     QVBoxLayout* m_layout;
-    QString m_modifier;
     QKeySequence m_ks;
 };

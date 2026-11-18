@@ -35,7 +35,15 @@ public slots:
 private slots:
     void showHelpChanged(bool checked);
     void saveLastRegion(bool checked);
+    void saveLastRegionOnCancel(bool checked);
     void ignoreWholeScreenLastRegion(bool checked);
+#if defined(Q_OS_WIN)
+    void openWithDefaultAppEdited();
+#endif
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    void instantCaptureUseLastRegion(bool checked);
+    void instantCaptureSave(bool checked);
+#endif
     void showSidePanelButtonChanged(bool checked);
     void showDesktopNotificationChanged(bool checked);
     void showAbortNotificationChanged(bool checked);
@@ -107,6 +115,12 @@ private:
     void initUploadHistoryMax();
     void initUploadClientSecret();
     void initSaveLastRegion();
+#if defined(Q_OS_WIN)
+    void initOpenWithDefaultApp();
+#endif
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    void initInstantCapture();
+#endif
     void initShowSelectionGeometry();
     void initJpegQuality();
     void initReverseArrow();
@@ -147,7 +161,15 @@ private:
     QCheckBox* m_antialiasingPinZoom;
     QCheckBox* m_pinShadow;
     QCheckBox* m_saveLastRegion;
+    QCheckBox* m_saveLastRegionOnCancel;
     QCheckBox* m_ignoreWholeScreenLastRegion;
+#if defined(Q_OS_WIN)
+    QLineEdit* m_openWithDefaultApp;
+#endif
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    QCheckBox* m_instantCaptureUseLastRegion;
+    QCheckBox* m_instantCaptureSave;
+#endif
     QCheckBox* m_uploadWithoutConfirmation;
     QPushButton* m_importButton;
     QPushButton* m_exportButton;
