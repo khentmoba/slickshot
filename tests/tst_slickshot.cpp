@@ -416,6 +416,7 @@ void SlickShotTests::testProperScreenshotPathDottedDirectory()
 
 void SlickShotTests::testProperScreenshotPathSubfolderPattern()
 {
+    QFile::remove(ConfigHandler().configFilePath());
     ConfigHandler config;
     const QString prevPattern = config.filenamePattern();
     config.setFilenamePattern(QStringLiteral("2026/11/shot"));
@@ -435,17 +436,14 @@ void SlickShotTests::testProperScreenshotPathSubfolderPattern()
       handler.properScreenshotPath(dirPath, QStringLiteral("png")).isEmpty());
 
     config.setFilenamePattern(prevPattern);
+    QFile::remove(config.configFilePath());
     QDir(dirPath).removeRecursively();
 }
 
 void SlickShotTests::testSaveToFilesystemGUIKeepsBaseSavePath()
 {
+    QFile::remove(ConfigHandler().configFilePath());
     ConfigHandler config;
-    const QString prevSavePath = config.savePath();
-    const bool prevFixed = config.savePathFixed();
-    const QString prevPattern = config.filenamePattern();
-    const QString prevExt = config.saveAsFileExtension();
-    const bool prevCopyPath = config.copyPathAfterSave();
 
     const QString baseDir =
       QDir::tempPath() + QStringLiteral("/slickshot_test_gui_save");
@@ -475,7 +473,8 @@ void SlickShotTests::testSaveToFilesystemGUIKeepsBaseSavePath()
     QVERIFY(!QDir(baseDir + QStringLiteral("/2026/11")).exists());
 
     // 2. Non-fixed with existing patternDir: dialog opens in patternDir, and
-    //    saving there keeps savePath at baseDir instead of nesting into 2026/11.
+    //    saving there keeps savePath at baseDir instead of nesting into
+    //    2026/11.
     const QString patternDir = baseDir + QStringLiteral("/2026/11");
     QVERIFY(QDir().mkpath(patternDir));
     config.setSavePath(baseDir);
@@ -506,11 +505,7 @@ void SlickShotTests::testSaveToFilesystemGUIKeepsBaseSavePath()
     QCOMPARE(QDir(config.savePath()).absolutePath(),
              QDir(baseDir).absolutePath());
 
-    config.setSavePath(prevSavePath);
-    config.setSavePathFixed(prevFixed);
-    config.setFilenamePattern(prevPattern);
-    config.setSaveAsFileExtension(prevExt);
-    config.setCopyPathAfterSave(prevCopyPath);
+    QFile::remove(config.configFilePath());
     QDir(baseDir).removeRecursively();
 }
 
