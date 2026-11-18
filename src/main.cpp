@@ -352,9 +352,6 @@ int main(int argc, char* argv[])
 #endif
 
         CaptureRequest req(CaptureRequest::GRAPHICAL_MODE);
-        if (ConfigHandler().saveLastRegion()) {
-            req.setInitialSelection(getLastRegion());
-        }
         flameshot->requestCapture(req);
         return qApp->exec();
     }

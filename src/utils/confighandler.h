@@ -93,6 +93,7 @@ public:
     CONFIG_GETTER_SETTER(disabledTrayIcon, setDisabledTrayIcon, bool)
     CONFIG_GETTER_SETTER(drawThickness, setDrawThickness, int)
     CONFIG_GETTER_SETTER(drawFontSize, setDrawFontSize, int)
+    CONFIG_GETTER_SETTER(drawTextShadow, setDrawTextShadow, bool)
     CONFIG_GETTER_SETTER(drawCircleCounterSize, setDrawCircleCounterSize, int)
     CONFIG_GETTER_SETTER(drawCircleCounterOutline,
                          setDrawCircleCounterOutline,
@@ -122,6 +123,7 @@ public:
     CONFIG_GETTER_SETTER(copyPathAfterSave, setCopyPathAfterSave, bool)
     CONFIG_GETTER_SETTER(saveAsFileExtension, setSaveAsFileExtension, QString)
     CONFIG_GETTER_SETTER(antialiasingPinZoom, setAntialiasingPinZoom, bool)
+    CONFIG_GETTER_SETTER(pinShadow, setPinShadow, bool)
     CONFIG_GETTER_SETTER(useJpgForClipboard, setUseJpgForClipboard, bool)
 #if defined(Q_OS_MACOS)
     CONFIG_GETTER_SETTER(useNativeFullscreen, setUseNativeFullscreen, bool)
@@ -139,6 +141,9 @@ public:
     CONFIG_GETTER_SETTER(copyOnDoubleClick, setCopyOnDoubleClick, bool)
     CONFIG_GETTER_SETTER(uploadClientSecret, setUploadClientSecret, QString)
     CONFIG_GETTER_SETTER(saveLastRegion, setSaveLastRegion, bool)
+    CONFIG_GETTER_SETTER(ignoreWholeScreenLastRegion,
+                         setIgnoreWholeScreenLastRegion,
+                         bool)
     CONFIG_GETTER_SETTER(showSelectionGeometry, setShowSelectionGeometry, int)
     CONFIG_GETTER_SETTER(jpegQuality, setJpegQuality, int)
     CONFIG_GETTER_SETTER(reverseArrow, setReverseArrow, bool)

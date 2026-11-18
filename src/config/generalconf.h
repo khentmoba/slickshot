@@ -35,6 +35,7 @@ public slots:
 private slots:
     void showHelpChanged(bool checked);
     void saveLastRegion(bool checked);
+    void ignoreWholeScreenLastRegion(bool checked);
     void showSidePanelButtonChanged(bool checked);
     void showDesktopNotificationChanged(bool checked);
     void showAbortNotificationChanged(bool checked);
@@ -61,6 +62,7 @@ private slots:
     void setJpegQuality(int v);
     void setReverseArrow(bool checked);
     void setInsecurePixelate(bool checked);
+    void setDrawTextShadow(bool checked);
 #if !defined(Q_OS_MACOS)
     void captureActiveMonitorChanged(bool checked);
 #endif
@@ -76,6 +78,7 @@ private:
 
     void initAllowMultipleGuiInstances();
     void initAntialiasingPinZoom();
+    void initPinShadow();
     void initAutoCloseIdleDaemon();
     void initAutostart();
 #if !defined(DISABLE_UPDATE_CHECKER)
@@ -109,6 +112,7 @@ private:
     void initReverseArrow();
     void initDrawCircleCounterOutline();
     void initInsecurePixelate();
+    void initDrawTextShadow();
 #if !defined(Q_OS_MACOS)
     void initCaptureActiveMonitor();
 #endif
@@ -141,7 +145,9 @@ private:
     QCheckBox* m_copyURLAfterUpload;
     QCheckBox* m_copyPathAfterSave;
     QCheckBox* m_antialiasingPinZoom;
+    QCheckBox* m_pinShadow;
     QCheckBox* m_saveLastRegion;
+    QCheckBox* m_ignoreWholeScreenLastRegion;
     QCheckBox* m_uploadWithoutConfirmation;
     QPushButton* m_importButton;
     QPushButton* m_exportButton;
@@ -167,6 +173,7 @@ private:
     QCheckBox* m_reverseArrow;
     QCheckBox* m_drawCircleCounterOutline;
     QCheckBox* m_insecurePixelate;
+    QCheckBox* m_drawTextShadow;
 #if !defined(Q_OS_MACOS)
     QCheckBox* m_captureActiveMonitor;
 #endif

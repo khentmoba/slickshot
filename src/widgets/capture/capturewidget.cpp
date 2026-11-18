@@ -18,6 +18,7 @@
 #include "utils/abstractlogger.h"
 #include "utils/screengrabber.h"
 #include "utils/screenshotsaver.h"
+#include "utils/windowpicker.h"
 #include "widgets/capture/colorpicker.h"
 #include "widgets/capture/hovereventfilter.h"
 #include "widgets/capture/modificationcommand.h"
@@ -500,6 +501,7 @@ void CaptureWidget::initHelpMessage()
 {
     QList<QPair<QString, QString>> keyMap;
     keyMap << std::pair(tr("Mouse"), tr("Select screenshot area"));
+    keyMap << std::pair(tr("Left Click"), tr("Select window under cursor"));
     using CT = CaptureTool;
     for (auto toolType :
          { CT::TYPE_ACCEPT, CT::TYPE_SAVE, CT::TYPE_COPY, CT::TYPE_PIN }) {
@@ -578,7 +580,11 @@ void CaptureWidget::initQuitPrompt()
     m_quitPrompt->show();
     QRect position = m_quitPrompt->frameGeometry();
     QScreen* currentScreen = QGuiAppCurrentScreen().currentScreen();
-    position.moveCenter(currentScreen->availableGeometry().center());
+    // The prompt is a child of the capture widget, so move() takes
+    // coordinates relative to it. The screen geometry is global, which only
+    // matches when the capture widget starts at the global origin.
+    position.moveCenter(
+      mapFromGlobal(currentScreen->availableGeometry().center()));
     m_quitPrompt->move(position.topLeft());
     m_quitPrompt->hide();
 
@@ -1065,6 +1071,16 @@ void CaptureWidget::mouseMoveEvent(QMouseEvent* e)
 void CaptureWidget::mouseReleaseEvent(QMouseEvent* e)
 {
     invalidateDragBase();
+
+    // A click without a drag selects the window under the cursor.
+    if (e->button() == Qt::LeftButton && !m_colorPicker->isVisible() &&
+        !m_activeTool && !m_selection->isVisible() &&
+        m_panel->activeLayerIndex() == -1 &&
+        (e->pos() - m_mousePressedPos).manhattanLength() <=
+          MOUSE_DISTANCE_TO_START_MOVING) {
+        selectWindowAt(e->pos());
+    }
+
     if (e->button() == Qt::LeftButton && m_colorPicker->isVisible()) {
         // Color picker
         if (m_colorPicker->isVisible() && m_panel->activeLayerIndex() >= 0 &&
@@ -1096,6 +1112,25 @@ void CaptureWidget::mouseReleaseEvent(QMouseEvent* e)
     m_mouseIsClicked = false;
     m_activeToolIsMoved = false;
 
+    updateSelectionState();
+    updateCursor();
+}
+
+void CaptureWidget::selectWindowAt(const QPoint& pos)
+{
+    const QRect windowRect = WindowPicker::windowRectAt(mapToGlobal(pos));
+    if (windowRect.isNull()) {
+        return;
+    }
+    const QRect local =
+      windowRect.translated(-mapToGlobal(QPoint(0, 0))).intersected(rect());
+    if (local.width() < 2 || local.height() < 2) {
+        return;
+    }
+    m_selection->setGeometry(local);
+    m_selection->show();
+    m_context.selection = extendedRect(local);
+    emit m_selection->geometrySettled();
     updateSelectionState();
     updateCursor();
 }

@@ -127,6 +127,7 @@ static QMap<class QString, QSharedPointer<ValueHandler>>
     OPTION("copyURLAfterUpload"          ,Bool               ( true          )),
     OPTION("copyPathAfterSave"           ,Bool               ( false         )),
     OPTION("antialiasingPinZoom"         ,Bool               ( true          )),
+    OPTION("pinShadow"                   ,Bool               ( true          )),
     OPTION("useJpgForClipboard"          ,Bool               ( false         )),
 #if defined(Q_OS_MACOS)
     OPTION("useNativeFullscreen"         ,Bool               ( false         )),
@@ -137,6 +138,7 @@ static QMap<class QString, QSharedPointer<ValueHandler>>
     OPTION("savePathFixed"               ,Bool               ( false         )),
     OPTION("saveAsFileExtension"         ,SaveFileExtension  (               )),
     OPTION("saveLastRegion"              ,Bool               ( false         )),
+    OPTION("ignoreWholeScreenLastRegion" ,Bool               ( false         )),
     OPTION("uploadHistoryMax"            ,LowerBoundedInt    ( 0, 25         )),
     OPTION("undoLimit"                   ,BoundedInt         ( 0, 999, 100   )),
     // Interface tab
@@ -151,6 +153,7 @@ static QMap<class QString, QSharedPointer<ValueHandler>>
     // drawThickness shared by Pencil, Line, Arrow, Rectangular Selection, Circle
     OPTION("drawThickness"               ,LowerBoundedInt    ( 1, 3          )),
     OPTION("drawFontSize"                ,LowerBoundedInt    ( 1, 8          )),
+    OPTION("drawTextShadow"              ,Bool               ( true          )),
     OPTION("drawCircleCounterSize"       ,LowerBoundedInt    ( 1, 1          )),
     OPTION("drawCircleCounterOutline"    ,Bool               ( true          )),
     OPTION("drawPixelateSize"            ,LowerBoundedInt    ( 1, 2          )),
@@ -235,6 +238,9 @@ static QMap<QString, QSharedPointer<KeySequence>> recognizedShortcuts = {
     SHORTCUT("TYPE_MOVE_UP"             ,   "Up"                    ),
     SHORTCUT("TYPE_MOVE_DOWN"           ,   "Down"                  ),
     SHORTCUT("TYPE_COMMIT_CURRENT_TOOL" ,   "Ctrl+Return"           ),
+#if defined(Q_OS_MACOS) || defined(Q_OS_WIN)
+    SHORTCUT("TAKE_SCREENSHOT_INSTANT"  ,                           ),
+#endif
 #if defined(Q_OS_WIN)
     SHORTCUT("TAKE_SCREENSHOT"          ,   "Meta+Shift+x"          ),
 #endif

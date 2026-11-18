@@ -23,13 +23,16 @@ constexpr int MARGIN = 7;
 constexpr int BLUR_RADIUS = 2 * MARGIN;
 constexpr qreal STEP = 0.03;
 constexpr qreal MIN_SIZE = 100.0;
+constexpr int ZOOM_SETTLE_INTERVAL = 150;
 }
 
 PinWidget::PinWidget(const QPixmap& pixmap,
                      const QRect& geometry,
                      QWidget* parent)
   : QWidget(parent)
+  , m_originalPixmap(pixmap)
   , m_pixmap(pixmap)
+  , m_displaySize(pixmap.deviceIndependentSize().toSize())
   , m_layout(new QVBoxLayout(this))
   , m_label(new QLabel())
   , m_shadowEffect(new QGraphicsDropShadowEffect(this))
@@ -45,12 +48,21 @@ PinWidget::PinWidget(const QPixmap& pixmap,
     m_baseColor = conf.uiColor();
     QString closePinnedCaptureShortcut =
       conf.shortcut("TYPE_CLOSE_ACTIVE_PIN_WINDOW");
+
+    // Coalesce zoom events and update geometry before the next paint.
+    m_updateTimer.setSingleShot(true);
+    connect(&m_updateTimer, &QTimer::timeout, this, &PinWidget::updatePixmap);
+    m_qualityTimer.setSingleShot(true);
+    m_qualityTimer.setInterval(ZOOM_SETTLE_INTERVAL);
+    connect(&m_qualityTimer, &QTimer::timeout, this, &PinWidget::finishZoom);
+
     m_layout->setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN);
 
     m_shadowEffect->setColor(QColor(0, 0, 0, 160));
     m_shadowEffect->setBlurRadius(BLUR_RADIUS);
     m_shadowEffect->setOffset(0, 0);
     setGraphicsEffect(m_shadowEffect);
+    m_shadowEffect->setEnabled(conf.pinShadow());
     setWindowOpacity(m_opacity);
 
     m_label->setPixmap(m_pixmap);
@@ -73,6 +85,11 @@ PinWidget::PinWidget(const QPixmap& pixmap,
             &QWidget::customContextMenuRequested,
             this,
             &PinWidget::showContextMenu);
+
+    connect(
+      ConfigHandler::getInstance(), &ConfigHandler::fileChanged, this, [this] {
+          m_shadowEffect->setEnabled(ConfigHandler().pinShadow());
+      });
 }
 
 void PinWidget::closePin()
@@ -108,8 +125,8 @@ bool PinWidget::scrollEvent(QWheelEvent* event)
         m_expanding = false;
     }
 
-    m_sizeChanged = true;
-    update();
+    m_qualityTimer.stop();
+    m_updateTimer.start();
     return true;
 }
 
@@ -169,18 +186,20 @@ bool PinWidget::gestureEvent(QGestureEvent* event)
 
 void PinWidget::rotateLeft()
 {
-    m_sizeChanged = true;
-
-    auto rotateTransform = QTransform().rotate(270);
-    m_pixmap = m_pixmap.transformed(rotateTransform);
+    m_rotateFactor = (m_rotateFactor + 3) % 4;
+    m_pixmap =
+      m_originalPixmap.transformed(QTransform().rotate(90 * m_rotateFactor));
+    m_qualityTimer.stop();
+    m_updateTimer.start();
 }
 
 void PinWidget::rotateRight()
 {
-    m_sizeChanged = true;
-
-    auto rotateTransform = QTransform().rotate(90);
-    m_pixmap = m_pixmap.transformed(rotateTransform);
+    m_rotateFactor = (m_rotateFactor + 1) % 4;
+    m_pixmap =
+      m_originalPixmap.transformed(QTransform().rotate(90 * m_rotateFactor));
+    m_qualityTimer.stop();
+    m_updateTimer.start();
 }
 
 void PinWidget::increaseOpacity()
@@ -209,36 +228,65 @@ bool PinWidget::event(QEvent* event)
     } else if (event->type() == QEvent::Wheel) {
         return scrollEvent(static_cast<QWheelEvent*>(event));
     }
+    // Refresh pixels after a screen or DPR change without changing logical
+    // geometry.
+    if (event->type() == QEvent::ScreenChangeInternal
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+        || event->type() == QEvent::DevicePixelRatioChange
+#endif
+    ) {
+        m_qualityTimer.start();
+    }
     return QWidget::event(event);
 }
 
-void PinWidget::paintEvent(QPaintEvent* event)
+void PinWidget::updatePixmap()
 {
-    if (m_sizeChanged) {
-        const auto aspectRatio =
-          m_expanding ? Qt::KeepAspectRatioByExpanding : Qt::KeepAspectRatio;
-        const auto transformType = ConfigHandler().antialiasingPinZoom()
-                                     ? Qt::SmoothTransformation
-                                     : Qt::FastTransformation;
-        const qreal iw = m_pixmap.width();
-        const qreal ih = m_pixmap.height();
-        const qreal nw = qBound(MIN_SIZE,
-                                iw * m_currentStepScaleFactor * m_scaleFactor,
-                                static_cast<qreal>(maximumWidth()));
-        const qreal nh = qBound(MIN_SIZE,
-                                ih * m_currentStepScaleFactor * m_scaleFactor,
-                                static_cast<qreal>(maximumHeight()));
+    const auto aspectRatio =
+      m_expanding ? Qt::KeepAspectRatioByExpanding : Qt::KeepAspectRatio;
+    const auto transformType = ConfigHandler().antialiasingPinZoom()
+                                 ? Qt::SmoothTransformation
+                                 : Qt::FastTransformation;
+    const qreal iw = m_pixmap.width();
+    const qreal ih = m_pixmap.height();
+    const qreal nw = qBound(MIN_SIZE,
+                            iw * m_currentStepScaleFactor * m_scaleFactor,
+                            static_cast<qreal>(maximumWidth()));
+    const qreal nh = qBound(MIN_SIZE,
+                            ih * m_currentStepScaleFactor * m_scaleFactor,
+                            static_cast<qreal>(maximumHeight()));
 
-        const QPixmap pix = m_pixmap.scaled(nw, nh, aspectRatio, transformType);
+    const QSize scaledSize = m_pixmap.size().scaled(nw, nh, aspectRatio);
+    m_displaySize = (QSizeF(scaledSize) / m_pixmap.devicePixelRatio()).toSize();
+    renderPixmap(transformType);
+    adjustSize();
+    m_qualityTimer.start();
+}
 
-        m_label->setPixmap(pix);
-        adjustSize();
-        m_sizeChanged = false;
+void PinWidget::renderPixmap(Qt::TransformationMode mode)
+{
+    // Scale the full-resolution source directly to the window's physical
+    // pixels. Retaining the source DPR here would make QLabel resample the
+    // result again.
+    const qreal dpr = m_label->devicePixelRatioF();
+    QPixmap pix =
+      m_pixmap.scaled(m_displaySize * dpr, Qt::IgnoreAspectRatio, mode);
+    pix.setDevicePixelRatio(dpr);
+    m_label->setPixmap(pix);
+}
+
+void PinWidget::finishZoom()
+{
+    if (m_updateTimer.isActive()) {
+        return;
     }
+    // Only replace the pixels: the settled image must not resize the window.
+    renderPixmap(Qt::SmoothTransformation);
 }
 
 void PinWidget::pinchTriggered(QPinchGesture* gesture)
 {
+    bool scheduleUpdate = false;
     if (gesture->state() == Qt::GestureStarted) {
         m_currentStepScaleFactor = 1.0;
     }
@@ -250,14 +298,17 @@ void PinWidget::pinchTriggered(QPinchGesture* gesture)
         if (step > 0.0 && !qFuzzyCompare(step, 1.0)) {
             m_scaleFactor *= step;
             m_expanding = step > 1.0;
-            m_sizeChanged = true;
+            scheduleUpdate = true;
         }
     }
     if (gesture->state() == Qt::GestureFinished ||
         gesture->state() == Qt::GestureCanceled) {
         m_expanding = false;
     }
-    update();
+    if (scheduleUpdate) {
+        m_qualityTimer.stop();
+        m_updateTimer.start();
+    }
 }
 
 void PinWidget::showContextMenu(const QPoint& pos)

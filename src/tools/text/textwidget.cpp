@@ -4,6 +4,7 @@
 #include "textwidget.h"
 
 #include <QEvent>
+#include <QGraphicsDropShadowEffect>
 #include <QKeyEvent>
 #include <QKeySequence>
 
@@ -22,7 +23,14 @@ bool TextWidget::event(QEvent* e)
 {
     if (e->type() == QEvent::ShortcutOverride) {
         auto* keyEvent = static_cast<QKeyEvent*>(e);
-        if (keyEvent->key() == Qt::Key_Escape) {
+        // QTextEdit doesn't claim word and line deletion keys here, so
+        // without this Ctrl+Backspace triggers the capture cancel shortcut
+        // instead of deleting the previous word.
+        if (keyEvent->key() == Qt::Key_Escape ||
+            keyEvent->matches(QKeySequence::DeleteStartOfWord) ||
+            keyEvent->matches(QKeySequence::DeleteEndOfWord) ||
+            keyEvent->matches(QKeySequence::DeleteEndOfLine) ||
+            keyEvent->matches(QKeySequence::DeleteCompleteLine)) {
             keyEvent->accept();
             return true;
         }
@@ -82,6 +90,25 @@ void TextWidget::setTextColor(const QColor& c)
     QString s(
       QStringLiteral("TextWidget { background: transparent; color: %1; }"));
     setStyleSheet(s.arg(c.name()));
+    if (m_shadowEffect) {
+        m_shadowEffect->setColor(QColor(0, 0, 0, 200));
+    }
+}
+
+void TextWidget::setShadow(bool shadow)
+{
+    if (shadow) {
+        if (!m_shadowEffect) {
+            m_shadowEffect = new QGraphicsDropShadowEffect(this);
+            m_shadowEffect->setBlurRadius(4);
+            m_shadowEffect->setOffset(1.5, 1.5);
+            setGraphicsEffect(m_shadowEffect);
+        }
+        m_shadowEffect->setColor(QColor(0, 0, 0, 200));
+        m_shadowEffect->setEnabled(true);
+    } else if (m_shadowEffect) {
+        m_shadowEffect->setEnabled(false);
+    }
 }
 
 void TextWidget::adjustSize()

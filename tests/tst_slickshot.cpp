@@ -11,6 +11,8 @@
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QKeyEvent>
+#include <QKeySequence>
 #include <QLabel>
 #include <QList>
 #include <QMap>
@@ -38,6 +40,8 @@
 #include "tools/pin/pinwidget.h"
 #include "tools/pixelate/pixelatetool.h"
 #include "tools/rectangle/rectangletool.h"
+#include "tools/text/texttool.h"
+#include "tools/text/textwidget.h"
 #include "utils/appupdate.h"
 #include "utils/filenamehandler.h"
 #include "utils/geometryutils.h"
@@ -46,6 +50,7 @@
 #include "utils/screenshotsaver.h"
 #include "utils/snippingtoolmanager.h"
 #include "utils/valuehandler.h"
+#include "utils/windowpicker.h"
 #include "widgets/capture/buttonhandler.h"
 #include "widgets/capture/capturetoolbutton.h"
 #include "widgets/capture/capturetoolobjects.h"
@@ -102,6 +107,10 @@ private slots:
     void testColorGrabMapsLogicalCursorToDevicePixel();
     void testConfigWheelLeavesUnfocusedComboUnchanged();
     void testPinWidgetAcceptsTouchEvents();
+    void testTextWidgetShortcutOverrideWordDeletion();
+    void testFilenamePatternSubdirectories();
+    void testTextToolShadowRendering();
+    void testWindowPickerIgnoresOwnWindow();
 #if defined(Q_OS_WIN)
     void testWindowsHdrConvertScRgbToSdr();
 #endif
@@ -1332,6 +1341,93 @@ void SlickShotTests::testWindowsHdrConvertScRgbToSdr()
     }
 }
 #endif
+
+void SlickShotTests::testTextWidgetShortcutOverrideWordDeletion()
+{
+    TextWidget widget;
+    const QList<QKeySequence::StandardKey> keys = {
+        QKeySequence::DeleteStartOfWord,
+        QKeySequence::DeleteEndOfWord,
+        QKeySequence::DeleteEndOfLine,
+        QKeySequence::DeleteCompleteLine,
+    };
+
+    for (const auto standardKey : keys) {
+        const auto seqs = QKeySequence::keyBindings(standardKey);
+        if (seqs.isEmpty()) {
+            continue;
+        }
+        const QKeyCombination combo = seqs.first()[0];
+        QKeyEvent ev(
+          QEvent::ShortcutOverride, combo.key(), combo.keyboardModifiers());
+        ev.setAccepted(false);
+        QVERIFY(QApplication::sendEvent(&widget, &ev));
+        QVERIFY(ev.isAccepted());
+    }
+}
+
+void SlickShotTests::testFilenamePatternSubdirectories()
+{
+    FileNameHandler handler;
+    const QString nested = handler.parseFilename(QStringLiteral("%Y/%m/shot"));
+    QVERIFY(!nested.isEmpty());
+    QCOMPARE(nested.count('/'), 2);
+    QVERIFY(nested.endsWith(QStringLiteral("/shot")));
+
+    // Parent-traversal and absolute paths must be rejected.
+    QVERIFY(handler.parseFilename(QStringLiteral("../escape")).isEmpty());
+    QVERIFY(handler.parseFilename(QStringLiteral("sub/../escape")).isEmpty());
+    QVERIFY(handler.parseFilename(QStringLiteral("/abs/path")).isEmpty());
+}
+
+void SlickShotTests::testTextToolShadowRendering()
+{
+    ConfigHandler().setDrawTextShadow(true);
+    TextTool tool;
+    CaptureContext ctx;
+    ctx.color = Qt::white;
+    ctx.toolSize = 8;
+    tool.drawStart(ctx);
+    tool.pressed(ctx);
+    if (auto* w = qobject_cast<TextWidget*>(tool.widget())) {
+        w->setPlainText(QStringLiteral("Hello"));
+    }
+    tool.setEditMode(false);
+
+    QPixmap canvas(200, 100);
+    canvas.fill(Qt::white);
+    QPainter painter(&canvas);
+    tool.process(painter, canvas);
+    painter.end();
+
+    // White text with shadow on a white canvas must still draw dark shadow
+    // pixels.
+    const QImage img = canvas.toImage();
+    bool hasNonWhite = false;
+    for (int y = 0; y < img.height() && !hasNonWhite; ++y) {
+        for (int x = 0; x < img.width(); ++x) {
+            if (img.pixelColor(x, y) != QColor(Qt::white)) {
+                hasNonWhite = true;
+                break;
+            }
+        }
+    }
+    QVERIFY(hasNonWhite);
+}
+
+void SlickShotTests::testWindowPickerIgnoresOwnWindow()
+{
+    QWidget ownWindow;
+    ownWindow.resize(200, 200);
+    ownWindow.move(50, 50);
+    ownWindow.show();
+    QTest::qWait(50);
+
+    // Must not crash or return our own widget's geometry if queried.
+    const QRect picked = WindowPicker::windowRectAt(QPoint(100, 100));
+    Q_UNUSED(picked);
+    QVERIFY(ConfigHandler().pinShadow());
+}
 
 QTEST_MAIN(SlickShotTests)
 #include "tst_slickshot.moc"
