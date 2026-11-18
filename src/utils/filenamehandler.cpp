@@ -39,6 +39,13 @@ bool isWindowsReservedName(const QString& name)
 } // namespace
 #endif
 
+namespace {
+// Replaces the directory separators entered in the filename pattern while it is
+// formatted, to tell them apart from the slashes produced by strftime
+// expansions such as %D (ASCII unit separator, not expected in a pattern)
+const QChar PATTERN_DIR_SEPARATOR(0x1F);
+} // namespace
+
 FileNameHandler::FileNameHandler(QObject* parent)
   : QObject(parent)
 {
@@ -70,32 +77,54 @@ QString FileNameHandler::parseFilename(const QString& name)
         res.chop(1);
     }
 
-    // Format the sanitized pattern (not the original name) so the empty-name
-    // default and the trailing-% cleanup above are actually honored.
-    res =
-      QString::fromStdString(strfparse::format_time_string(res.toStdString()));
+    // directory separators may be '/', and also '\' on Windows
+    QString pattern = QDir::fromNativeSeparators(res);
+    // Directory patterns must stay relative to the save directory. This also
+    // rejects root-relative ("\dir") and drive-relative ("C:dir\") Windows
+    // paths. Only patterns with a separator are checked, so filename-only
+    // patterns such as "C:%F" keep working as before.
+    if (pattern.contains('/') && !QDir::isRelativePath(pattern)) {
+        return {};
+    }
+    if (pattern.endsWith('/')) {
+        // only directories are given, use the default file name inside them
+        pattern += ConfigHandler().filenamePatternDefault();
+    }
 
-    // add the parsed pattern in a correct format for the filesystem
-    res = res.replace(QLatin1String("/"), QStringLiteral("⁄"))
-            .replace(QLatin1String("\\"), QStringLiteral("⁄"))
-            .replace(QLatin1String(":"), QLatin1String("-"));
+    // format the whole pattern at once so all its parts share the same time
+    pattern.replace('/', PATTERN_DIR_SEPARATOR);
+    res = QString::fromStdString(
+      strfparse::format_time_string(pattern.toStdString()));
 
-    // Control characters are not valid in file names on any platform.
-    for (int i = 0; i < res.size(); ++i) {
-        const ushort code = res.at(i).unicode();
-        if (code < 0x20 || (code >= 0x7f && code < 0xa0)) {
-            res[i] = QChar('_');
+    // add the parsed pattern in a correct format for the filesystem, as a path
+    // relative to the save directory. Separators produced by the specifiers are
+    // part of a name and get sanitized.
+    QStringList parts;
+    for (QString part : res.split(PATTERN_DIR_SEPARATOR, Qt::SkipEmptyParts)) {
+        part = QDir::fromNativeSeparators(part)
+                 .replace(QLatin1String("/"), QStringLiteral("⁄"))
+                 .replace(QLatin1String(":"), QLatin1String("-"));
+        // Control characters are not valid in file names on any platform.
+        for (int i = 0; i < part.size(); ++i) {
+            const ushort code = part.at(i).unicode();
+            if (code < 0x20 || (code >= 0x7f && code < 0xa0)) {
+                part[i] = QChar('_');
+            }
         }
-    }
-
+        if (part == QLatin1String(".") || part == QLatin1String("..")) {
+            // not a name, and ".." would leave the save directory
+            return {};
+        }
 #if defined(Q_OS_WIN)
-    // A bare reserved device name is not a usable file name on Windows.
-    if (isWindowsReservedName(res)) {
-        res.prepend(QLatin1Char('_'));
-    }
+        // A bare reserved device name is not a usable path component on
+        // Windows.
+        if (isWindowsReservedName(part)) {
+            part.prepend(QLatin1Char('_'));
+        }
 #endif
-
-    return res;
+        parts << part;
+    }
+    return parts.join('/');
 }
 
 /**
@@ -128,7 +157,15 @@ QString FileNameHandler::properScreenshotPath(QString path,
         // path is a directory => generate filename from configured pattern.
         // The directory's own name must not contribute a suffix: a directory
         // called "shots.v2" would otherwise yield "<pattern>.v2".
-        path = QDir(QDir(path).absolutePath() + "/" + parsedPattern()).path();
+        QString name = parsedPattern();
+        if (name.isEmpty()) {
+            AbstractLogger::error()
+              << tr("Invalid filename pattern '%1': it must be a relative "
+                    "path without '.' or '..' parts")
+                   .arg(ConfigHandler().filenamePattern());
+            return {};
+        }
+        path = QDir(QDir(path).absolutePath() + "/" + name).path();
     } else {
         // path points to a file => strip it of its suffix for now
         suffix = info.suffix();

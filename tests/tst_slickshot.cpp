@@ -75,6 +75,8 @@ private slots:
     void testAppUpdateCanInstallInPlaceForPaths();
     void testFileNameHandlerParseFilename();
     void testProperScreenshotPathDottedDirectory();
+    void testProperScreenshotPathSubfolderPattern();
+    void testSaveToFilesystemGUIKeepsBaseSavePath();
     void testSelectionWidgetStaysStationary();
     void testRegionRejectsOutOfRangeScreen();
     void testOpenWithTempFileRemovalIsDeferred();
@@ -345,12 +347,27 @@ void SlickShotTests::testFileNameHandlerParseFilename()
     QCOMPARE(handler.parseFilename(QStringLiteral("shot%")),
              QStringLiteral("shot"));
 
-    // Path and drive separators must never survive into a filename.
-    const QString separators =
-      handler.parseFilename(QStringLiteral("a/b\\c:d"));
-    QVERIFY(!separators.contains(QLatin1Char('/')));
-    QVERIFY(!separators.contains(QLatin1Char('\\')));
-    QVERIFY(!separators.contains(QLatin1Char(':')));
+    // Explicit '/' (and '\' on Windows) in the pattern act as relative
+    // subfolder separators, while ':' is sanitized and strftime-expanded
+    // slashes (e.g. %D) become '⁄' rather than creating subfolders.
+    QCOMPARE(handler.parseFilename(QStringLiteral("a/b/c:d")),
+             QStringLiteral("a/b/c-d"));
+#if defined(Q_OS_WIN)
+    QCOMPARE(handler.parseFilename(QStringLiteral("a/b\\c:d")),
+             QStringLiteral("a/b/c-d"));
+#else
+    QCOMPARE(handler.parseFilename(QStringLiteral("a/b\\c:d")),
+             QStringLiteral("a/b\\c-d"));
+#endif
+    const QString expandedDate = handler.parseFilename(QStringLiteral("%D"));
+    QVERIFY(!expandedDate.contains(QLatin1Char('/')));
+    QVERIFY(!expandedDate.contains(QLatin1Char('\\')));
+    QVERIFY(!expandedDate.contains(QLatin1Char(':')));
+
+    // Absolute paths and '.' / '..' traversal segments must be rejected.
+    QVERIFY(handler.parseFilename(QStringLiteral("/abs/shot")).isEmpty());
+    QVERIFY(handler.parseFilename(QStringLiteral("../escape")).isEmpty());
+    QVERIFY(handler.parseFilename(QStringLiteral("sub/./shot")).isEmpty());
 
     // Control characters are removed rather than written into a path.
     const QString control =
@@ -395,6 +412,101 @@ void SlickShotTests::testProperScreenshotPathDottedDirectory()
     // The directory's own suffix must not become the screenshot's extension.
     QCOMPARE(QFileInfo(path).suffix(), QStringLiteral("png"));
     QDir(dirPath).removeRecursively();
+}
+
+void SlickShotTests::testProperScreenshotPathSubfolderPattern()
+{
+    QFile::remove(ConfigHandler().configFilePath());
+    ConfigHandler config;
+    const QString prevPattern = config.filenamePattern();
+    config.setFilenamePattern(QStringLiteral("2026/11/shot"));
+
+    FileNameHandler handler;
+    const QString dirPath =
+      QDir::tempPath() + QStringLiteral("/slickshot_test_subfolder");
+    QVERIFY(QDir().mkpath(dirPath));
+
+    const QString path =
+      handler.properScreenshotPath(dirPath, QStringLiteral("png"));
+    QCOMPARE(path, QDir(dirPath).filePath(QStringLiteral("2026/11/shot.png")));
+
+    // Invalid traversal pattern must be rejected with an empty path.
+    config.setFilenamePattern(QStringLiteral("../escape"));
+    QVERIFY(
+      handler.properScreenshotPath(dirPath, QStringLiteral("png")).isEmpty());
+
+    config.setFilenamePattern(prevPattern);
+    QFile::remove(config.configFilePath());
+    QDir(dirPath).removeRecursively();
+}
+
+void SlickShotTests::testSaveToFilesystemGUIKeepsBaseSavePath()
+{
+    QFile::remove(ConfigHandler().configFilePath());
+    ConfigHandler config;
+
+    const QString baseDir =
+      QDir::tempPath() + QStringLiteral("/slickshot_test_gui_save");
+    QDir(baseDir).removeRecursively();
+    QVERIFY(QDir().mkpath(baseDir));
+
+    config.setSavePath(baseDir);
+    config.setFilenamePattern(QStringLiteral("2026/11/shot"));
+    config.setSaveAsFileExtension(QStringLiteral("png"));
+    config.setCopyPathAfterSave(false);
+
+    QPixmap pixmap(16, 16);
+    pixmap.fill(Qt::red);
+
+    // 1. Non-fixed: missing patternDir falls back to baseDir for the dialog
+    //    and does not create patternDir before the user accepts.
+    config.setSavePathFixed(false);
+    QString promptedPath;
+    QVERIFY(saveToFilesystemGUI(
+      pixmap, [&](const QString&, const QString& initialPath) {
+          promptedPath = initialPath;
+          return initialPath;
+      }));
+    QCOMPARE(QFileInfo(promptedPath).absolutePath(),
+             QFileInfo(baseDir).absoluteFilePath());
+    QVERIFY(QFile::exists(promptedPath));
+    QVERIFY(!QDir(baseDir + QStringLiteral("/2026/11")).exists());
+
+    // 2. Non-fixed with existing patternDir: dialog opens in patternDir, and
+    //    saving there keeps savePath at baseDir instead of nesting into
+    //    2026/11.
+    const QString patternDir = baseDir + QStringLiteral("/2026/11");
+    QVERIFY(QDir().mkpath(patternDir));
+    config.setSavePath(baseDir);
+    QString promptedSubPath;
+    QVERIFY(saveToFilesystemGUI(
+      pixmap, [&](const QString&, const QString& initialPath) {
+          promptedSubPath = initialPath;
+          return initialPath;
+      }));
+    QCOMPARE(QFileInfo(promptedSubPath).absolutePath(),
+             QFileInfo(patternDir).absoluteFilePath());
+    QVERIFY(QFile::exists(promptedSubPath));
+    QCOMPARE(QDir(config.savePath()).absolutePath(),
+             QDir(baseDir).absolutePath());
+
+    // 3. Fixed save path: creates patternDir automatically without prompting
+    //    and keeps savePath at baseDir.
+    QDir(baseDir + QStringLiteral("/2026")).removeRecursively();
+    config.setSavePath(baseDir);
+    config.setSavePathFixed(true);
+    bool promptCalled = false;
+    QVERIFY(saveToFilesystemGUI(pixmap, [&](const QString&, const QString&) {
+        promptCalled = true;
+        return QString();
+    }));
+    QVERIFY(!promptCalled);
+    QVERIFY(QFile::exists(patternDir + QStringLiteral("/shot.png")));
+    QCOMPARE(QDir(config.savePath()).absolutePath(),
+             QDir(baseDir).absolutePath());
+
+    QFile::remove(config.configFilePath());
+    QDir(baseDir).removeRecursively();
 }
 
 void SlickShotTests::testSelectionWidgetStaysStationary()

@@ -5,6 +5,7 @@
 
 #include <QString>
 #include <QWidget>
+#include <functional>
 
 class QPixmap;
 
@@ -17,3 +18,7 @@ void saveToClipboard(const QPixmap& capture);
 // GNOME Wayland: keeps the widget alive until clipboard data is fetched
 bool saveToClipboardGnomeWorkaround(const QPixmap& pixmap, QWidget* keepAlive);
 bool saveToFilesystemGUI(const QPixmap& capture);
+bool saveToFilesystemGUI(
+  const QPixmap& capture,
+  const std::function<QString(const QString& title, const QString& path)>&
+    promptSavePath);

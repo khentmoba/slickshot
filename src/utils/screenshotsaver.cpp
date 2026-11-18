@@ -95,6 +95,22 @@ void ensureEncodedImageUtiConverter()
 } // namespace
 #endif
 
+namespace {
+// Create the missing directories of `filePath`, as the filename pattern may
+// place the capture in subdirectories of the save directory
+bool createParentDirectories(const QString& filePath)
+{
+    QString dirPath = QFileInfo(filePath).absolutePath();
+    if (QDir().mkpath(dirPath)) {
+        return true;
+    }
+    AbstractLogger::error()
+      << QObject::tr("Error trying to save as ") + filePath + ": " +
+           QObject::tr("Unable to create directory ") + dirPath;
+    return false;
+}
+} // namespace
+
 bool saveToFilesystem(const QPixmap& capture,
                       const QString& path,
                       const QString& messagePrefix)
@@ -103,6 +119,15 @@ bool saveToFilesystem(const QPixmap& capture,
       path, ConfigHandler().saveAsFileExtension());
     QFile file{ completePath };
     bool okay = false;
+
+    if (completePath.isEmpty()) {
+        // invalid filename pattern, already reported
+        return okay;
+    }
+    // Only a directory gets its file name, and subdirectories, from the pattern
+    if (QFileInfo(path).isDir() && !createParentDirectories(completePath)) {
+        return okay;
+    }
 
     if (file.open(QIODevice::WriteOnly)) {
         QString saveExtension;
@@ -353,6 +378,14 @@ bool saveToClipboardGnomeWorkaround(const QPixmap& pixmap, QWidget* keepAlive)
 
 bool saveToFilesystemGUI(const QPixmap& capture)
 {
+    return saveToFilesystemGUI(capture, ShowSaveFileDialog);
+}
+
+bool saveToFilesystemGUI(
+  const QPixmap& capture,
+  const std::function<QString(const QString& title, const QString& path)>&
+    promptSavePath)
+{
     bool okay = false;
     ConfigHandler config;
     QString defaultSavePath = ConfigHandler().savePath();
@@ -363,6 +396,11 @@ bool saveToFilesystemGUI(const QPixmap& capture)
     }
     QString savePath = FileNameHandler().properScreenshotPath(
       defaultSavePath, ConfigHandler().saveAsFileExtension());
+    if (savePath.isEmpty()) {
+        // invalid filename pattern, already reported
+        return okay;
+    }
+    const QString patternDir = QFileInfo(savePath).absolutePath();
 #if defined(Q_OS_MACOS)
     for (QWidget* widget : qApp->topLevelWidgets()) {
         QString className(widget->metaObject()->className());
@@ -375,7 +413,17 @@ bool saveToFilesystemGUI(const QPixmap& capture)
     }
 #endif
     if (!config.savePathFixed()) {
-        savePath = ShowSaveFileDialog(QObject::tr("Save screenshot"), savePath);
+        // The dialog cannot open inside subdirectories from the pattern that
+        // do not exist yet, so it starts in the save directory rather than
+        // creating them before the user accepts
+        if (!QDir(patternDir).exists()) {
+            savePath = FileNameHandler().properScreenshotPath(
+              QDir(defaultSavePath).filePath(QFileInfo(savePath).fileName()),
+              ConfigHandler().saveAsFileExtension());
+        }
+        savePath = promptSavePath(QObject::tr("Save screenshot"), savePath);
+    } else if (!createParentDirectories(savePath)) {
+        return okay;
     }
     if (savePath == "") {
         return okay;
@@ -395,6 +443,13 @@ bool saveToFilesystemGUI(const QPixmap& capture)
             // Don't use QDir::separator() here, as Qt internally always uses
             // '/'
             QString pathNoFile = savePath.left(savePath.lastIndexOf('/'));
+            // Keep the base directory when saved in the subdirectories from
+            // the pattern, otherwise they would be nested again on each save
+            if (QFileInfo(defaultSavePath).isDir() &&
+                QDir(patternDir) != QDir(defaultSavePath) &&
+                QDir(pathNoFile) == QDir(patternDir)) {
+                pathNoFile = defaultSavePath;
+            }
 
             ConfigHandler().setSavePath(pathNoFile);
 
