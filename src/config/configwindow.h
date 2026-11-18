@@ -19,17 +19,25 @@ public:
     explicit ConfigWindow(QWidget* parent = nullptr);
     ~ConfigWindow() override;
 
+    void fitToScreen(const QRect& availableGeometry);
+
 signals:
     void updateChildren();
 
 protected:
+#if defined(Q_OS_WIN)
+    bool event(QEvent*) override;
+#endif
     void keyPressEvent(QKeyEvent*) override;
     void changeEvent(QEvent* event) override;
     bool eventFilter(QObject* obj, QEvent* event) override;
 
 private:
+    class TabScrollArea;
+
     void applyTheme();
     QTabWidget* m_tabWidget;
+    QList<TabScrollArea*> m_scrollAreas;
 
     FileNameEditor* m_filenameEditor;
     QWidget* m_filenameEditorTab;
