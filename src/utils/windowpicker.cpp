@@ -244,8 +244,9 @@ QRect WindowPicker::windowRectAt(const QPoint& globalPos)
         const QPoint targetOrigin =
           targetScreen ? targetScreen->geometry().topLeft() : QPoint(0, 0);
         const QPoint logicalTopLeft =
-          targetOrigin + QPoint(qRound((rect.left - mi.rcMonitor.left) / targetDpr),
-                                qRound((rect.top - mi.rcMonitor.top) / targetDpr));
+          targetOrigin +
+          QPoint(qRound((rect.left - mi.rcMonitor.left) / targetDpr),
+                 qRound((rect.top - mi.rcMonitor.top) / targetDpr));
         return QRect(logicalTopLeft,
                      QSize(qRound((rect.right - rect.left) / targetDpr),
                            qRound((rect.bottom - rect.top) / targetDpr)));
@@ -253,8 +254,8 @@ QRect WindowPicker::windowRectAt(const QPoint& globalPos)
 
     const QPoint fallbackOrigin =
       screen ? screen->geometry().topLeft() : QPoint(0, 0);
-    return QRect(fallbackOrigin + QPoint(qRound(rect.left / dpr),
-                                         qRound(rect.top / dpr)),
+    return QRect(fallbackOrigin +
+                   QPoint(qRound(rect.left / dpr), qRound(rect.top / dpr)),
                  QSize(qRound((rect.right - rect.left) / dpr),
                        qRound((rect.bottom - rect.top) / dpr)));
 #elif defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)

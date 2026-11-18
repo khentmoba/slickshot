@@ -138,8 +138,7 @@ Flameshot::Flameshot()
     const QKeySequence instantSeq(
       ConfigHandler().shortcut("TAKE_SCREENSHOT_INSTANT"));
     if (!instantSeq.isEmpty()) {
-        m_HotkeyScreenshotCaptureInstant =
-          new QHotkey(instantSeq, true, this);
+        m_HotkeyScreenshotCaptureInstant = new QHotkey(instantSeq, true, this);
         QObject::connect(m_HotkeyScreenshotCaptureInstant,
                          &QHotkey::activated,
                          qApp,
