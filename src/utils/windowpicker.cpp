@@ -227,23 +227,36 @@ QRect WindowPicker::windowRectAt(const QPoint& globalPos)
         return {};
     }
 
-    MONITORINFO mi{};
+    MONITORINFOEXW mi{};
     mi.cbSize = sizeof(mi);
-    HMONITOR hmon = MonitorFromPoint(physicalPoint, MONITOR_DEFAULTTONEAREST);
-    if (screen != nullptr && hmon != nullptr && GetMonitorInfoW(hmon, &mi)) {
+    HMONITOR hmon = MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST);
+    if (hmon != nullptr && GetMonitorInfoW(hmon, &mi)) {
+        const QString deviceName = QString::fromWCharArray(mi.szDevice);
+        QScreen* targetScreen = screen;
+        for (QScreen* s : QGuiApplication::screens()) {
+            if (s->name() == deviceName) {
+                targetScreen = s;
+                break;
+            }
+        }
+        const qreal targetDpr =
+          targetScreen ? targetScreen->devicePixelRatio() : dpr;
+        const QPoint targetOrigin =
+          targetScreen ? targetScreen->geometry().topLeft() : QPoint(0, 0);
         const QPoint logicalTopLeft =
-          screen->geometry().topLeft() +
-          QPoint(qRound((rect.left - mi.rcMonitor.left) / dpr),
-                 qRound((rect.top - mi.rcMonitor.top) / dpr));
+          targetOrigin + QPoint(qRound((rect.left - mi.rcMonitor.left) / targetDpr),
+                                qRound((rect.top - mi.rcMonitor.top) / targetDpr));
         return QRect(logicalTopLeft,
-                     QSize(qRound((rect.right - rect.left) / dpr),
-                           qRound((rect.bottom - rect.top) / dpr)));
+                     QSize(qRound((rect.right - rect.left) / targetDpr),
+                           qRound((rect.bottom - rect.top) / targetDpr)));
     }
 
-    return QRect(qRound(rect.left / dpr),
-                 qRound(rect.top / dpr),
-                 qRound((rect.right - rect.left) / dpr),
-                 qRound((rect.bottom - rect.top) / dpr));
+    const QPoint fallbackOrigin =
+      screen ? screen->geometry().topLeft() : QPoint(0, 0);
+    return QRect(fallbackOrigin + QPoint(qRound(rect.left / dpr),
+                                         qRound(rect.top / dpr)),
+                 QSize(qRound((rect.right - rect.left) / dpr),
+                       qRound((rect.bottom - rect.top) / dpr)));
 #elif defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     if (QGuiApplication::platformName().startsWith(QStringLiteral("wayland"))) {
         return {};
