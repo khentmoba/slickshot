@@ -8,7 +8,7 @@ if(POLICY CMP0169)
   cmake_policy(SET CMP0169 NEW)
 endif()
 
-set(FLAMESHOT_VERSION 0.1.3)
+set(FLAMESHOT_VERSION 0.1.4)
 
 # SlickShot (standalone fork of Flameshot)
 set(GIT_API_URL "https://api.github.com/repos/khentmoba/slickshot/releases/latest")
