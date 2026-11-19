@@ -124,6 +124,7 @@ private slots:
     void testWindowPickerIgnoresOwnWindow();
 #if defined(Q_OS_WIN)
     void testWindowsHdrConvertScRgbToSdr();
+    void testQtRuntimeDeployedForStandaloneLaunch();
 #endif
 #if !defined(DISABLE_UPDATE_CHECKER)
     void testUpdateNotificationWidget();
@@ -1588,6 +1589,25 @@ void SlickShotTests::testWindowPickerIgnoresOwnWindow()
     Q_UNUSED(picked);
     QVERIFY(ConfigHandler().pinShadow());
 }
+
+#if defined(Q_OS_WIN)
+void SlickShotTests::testQtRuntimeDeployedForStandaloneLaunch()
+{
+    // CTest puts Qt's bin directory on PATH, but a direct launch of the test
+    // executable does not. The Windows build deploys the Qt runtime beside the
+    // executable so Windows can find Qt6Test.dll without that setup.
+    const QString dir = QCoreApplication::applicationDirPath();
+    const QString stem = QStringLiteral("Qt%1Test").arg(QT_VERSION_MAJOR);
+    const QString releaseDll =
+      dir + QLatin1Char('/') + stem + QStringLiteral(".dll");
+    const QString debugDll =
+      dir + QLatin1Char('/') + stem + QStringLiteral("d.dll");
+    QVERIFY2(QFileInfo::exists(releaseDll) || QFileInfo::exists(debugDll),
+             qPrintable(QStringLiteral("Qt runtime not deployed beside the "
+                                       "test executable: %1")
+                          .arg(releaseDll)));
+}
+#endif
 
 QTEST_MAIN(SlickShotTests)
 #include "tst_slickshot.moc"
