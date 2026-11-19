@@ -30,6 +30,31 @@ if(Qt${QT_VERSION_MAJOR}Test_FOUND)
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
   )
   if(WIN32)
+    # Qt is linked dynamically. CTest puts Qt's bin directory on PATH, but a
+    # direct launch of tst_slickshot.exe (from an IDE or Explorer) otherwise
+    # fails with "Qt6Test.dll was not found" before any test runs. Deploy the
+    # runtime libraries and plugins next to the executable so it is self
+    # contained. Deploying plugins matters too: copying only the DLLs makes Qt
+    # look for its plugins beside the executable and no platform plugin loads.
+    foreach(prefix ${CMAKE_PREFIX_PATH})
+      list(APPEND TEST_WINDEPLOYQT_SEARCH_PATHS "${prefix}/bin")
+    endforeach()
+    list(APPEND TEST_WINDEPLOYQT_SEARCH_PATHS "$ENV{QTDIR}/bin")
+    find_program(TEST_WINDEPLOYQT_EXE windeployqt.exe
+      PATHS ${TEST_WINDEPLOYQT_SEARCH_PATHS})
+    if(TEST_WINDEPLOYQT_EXE)
+      add_custom_command(TARGET tst_slickshot POST_BUILD
+        COMMAND ${TEST_WINDEPLOYQT_EXE}
+          --no-translations --no-system-d3d-compiler --no-quick-import
+          --compiler-runtime
+          --dir $<TARGET_FILE_DIR:tst_slickshot> $<TARGET_FILE:tst_slickshot>
+        COMMENT "Deploying Qt runtime for tst_slickshot"
+        VERBATIM
+      )
+    else()
+      message(WARNING "windeployqt not found; tst_slickshot may fail outside CTest")
+    endif()
+
     set_property(TEST tst_slickshot APPEND PROPERTY
       ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt${QT_VERSION_MAJOR}::Core>"
     )
