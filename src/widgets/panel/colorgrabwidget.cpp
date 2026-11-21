@@ -126,9 +126,8 @@ bool ColorGrabWidget::eventFilter(QObject*, QEvent* event)
         // Hide overlay message when cursor is over it
         OverlayMessage* overlayMsg = OverlayMessage::instance();
         if (overlayMsg != nullptr) {
-            overlayMsg->setVisibility(
-              !overlayMsg->rect().contains(
-                overlayMsg->mapFromGlobal(cursorPos())));
+            overlayMsg->setVisibility(!overlayMsg->rect().contains(
+              overlayMsg->mapFromGlobal(cursorPos())));
         }
 
         m_color = getColorAtPoint(cursorPos());
@@ -222,7 +221,8 @@ QColor ColorGrabWidget::getColorAtPoint(const QPoint& p) const
         const QPoint point = mapFromGlobal(p);
         // we divide coordinate-wise to avoid rounding to nearest
         const QPoint samplePt(point.x() / ZOOM2, point.y() / ZOOM2);
-        if (!m_previewImage.isNull() && m_previewImage.rect().contains(samplePt)) {
+        if (!m_previewImage.isNull() &&
+            m_previewImage.rect().contains(samplePt)) {
             return m_previewImage.pixel(samplePt);
         }
     }

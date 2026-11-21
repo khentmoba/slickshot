@@ -103,8 +103,8 @@ void PixelateTool::process(QPainter& painter, const QPixmap& pixmap)
     if (pixelRatio <= 0.0 || pixmap.isNull()) {
         return;
     }
-    const QRect logicalBounds(
-      QPoint(0, 0), (QSizeF(pixmap.size()) / pixelRatio).toSize());
+    const QRect logicalBounds(QPoint(0, 0),
+                              (QSizeF(pixmap.size()) / pixelRatio).toSize());
     QRect selection = boundingRect().intersected(logicalBounds);
     if (selection.isEmpty()) {
         return;
@@ -133,8 +133,7 @@ void PixelateTool::process(QPainter& painter, const QPixmap& pixmap)
         painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
     }
     painter.drawImage(selection, m_cachedEffect);
-    if (prevSmooth !=
-        painter.testRenderHint(QPainter::SmoothPixmapTransform)) {
+    if (prevSmooth != painter.testRenderHint(QPainter::SmoothPixmapTransform)) {
         painter.setRenderHint(QPainter::SmoothPixmapTransform, prevSmooth);
     }
 }

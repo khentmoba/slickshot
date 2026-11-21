@@ -120,12 +120,11 @@ bool PinWidget::scrollEvent(QWheelEvent* event)
         const qreal iw = qMax<qreal>(1.0, m_pixmap.width());
         const qreal ih = qMax<qreal>(1.0, m_pixmap.height());
         const qreal baseScale = qMax<qreal>(0.001, m_scaleFactor);
-        const qreal minScale =
-          qMin(MIN_SIZE / iw, MIN_SIZE / ih) / baseScale;
-        const qreal maxDimW =
-          qMin<qreal>(maximumWidth(), qMin(iw * MAX_SCALE_FACTOR, MAX_PIN_DIMENSION));
-        const qreal maxDimH =
-          qMin<qreal>(maximumHeight(), qMin(ih * MAX_SCALE_FACTOR, MAX_PIN_DIMENSION));
+        const qreal minScale = qMin(MIN_SIZE / iw, MIN_SIZE / ih) / baseScale;
+        const qreal maxDimW = qMin<qreal>(
+          maximumWidth(), qMin(iw * MAX_SCALE_FACTOR, MAX_PIN_DIMENSION));
+        const qreal maxDimH = qMin<qreal>(
+          maximumHeight(), qMin(ih * MAX_SCALE_FACTOR, MAX_PIN_DIMENSION));
         const qreal maxScale = qMin(maxDimW / iw, maxDimH / ih) / baseScale;
         m_currentStepScaleFactor =
           qBound(qMin(minScale, maxScale), nextStep, qMax(minScale, maxScale));
@@ -263,10 +262,10 @@ void PinWidget::updatePixmap()
       m_expanding ? Qt::KeepAspectRatioByExpanding : Qt::KeepAspectRatio;
     const qreal iw = qMax<qreal>(1.0, m_pixmap.width());
     const qreal ih = qMax<qreal>(1.0, m_pixmap.height());
-    const qreal maxW =
-      qMin<qreal>(maximumWidth(), qMin(iw * MAX_SCALE_FACTOR, MAX_PIN_DIMENSION));
-    const qreal maxH =
-      qMin<qreal>(maximumHeight(), qMin(ih * MAX_SCALE_FACTOR, MAX_PIN_DIMENSION));
+    const qreal maxW = qMin<qreal>(
+      maximumWidth(), qMin(iw * MAX_SCALE_FACTOR, MAX_PIN_DIMENSION));
+    const qreal maxH = qMin<qreal>(
+      maximumHeight(), qMin(ih * MAX_SCALE_FACTOR, MAX_PIN_DIMENSION));
     const qreal nw =
       qBound(MIN_SIZE, iw * m_currentStepScaleFactor * m_scaleFactor, maxW);
     const qreal nh =

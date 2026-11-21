@@ -236,7 +236,8 @@ QRect WindowPicker::windowRectAt(const QPoint& globalPos)
           },
           reinterpret_cast<LPARAM>(&lookup));
         if (lookup.found) {
-            const QPoint localLogical = globalPos - screen->geometry().topLeft();
+            const QPoint localLogical =
+              globalPos - screen->geometry().topLeft();
             physicalPoint.x =
               lookup.rcMonitor.left + qRound(localLogical.x() * dpr);
             physicalPoint.y =

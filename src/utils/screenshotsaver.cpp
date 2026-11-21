@@ -133,10 +133,9 @@ bool saveCaptureAtomically(const QPixmap& capture,
                 : QByteArrayLiteral("png");
     }
     const char* format = fmt.constData();
-    const bool encoded =
-      (fmt == "jpg" || fmt == "jpeg")
-        ? capture.save(&file, format, jpegQuality)
-        : capture.save(&file, format);
+    const bool encoded = (fmt == "jpg" || fmt == "jpeg")
+                           ? capture.save(&file, format, jpegQuality)
+                           : capture.save(&file, format);
     if (!encoded) {
         if (file.error() != QFileDevice::NoError) {
             errorString = file.errorString();

@@ -1950,8 +1950,9 @@ void CaptureWidget::updateSizeIndicator()
     }
     if (m_sizeIndButton) {
         const QRect& selection = extendedSelection();
-        m_sizeIndButton->setText(
-          QStringLiteral("%1\n%2").arg(selection.width()).arg(selection.height()));
+        m_sizeIndButton->setText(QStringLiteral("%1\n%2")
+                                   .arg(selection.width())
+                                   .arg(selection.height()));
     }
 }
 
@@ -2112,8 +2113,8 @@ void CaptureWidget::redrawFromLayer(int layer)
         m_context.screenshot = m_dragBase.copy();
         m_dragDirtyRect = QRect();
     } else {
-        const QRect restoreRect = (m_dragDirtyRect | currentBounds)
-                                    .intersected(rect());
+        const QRect restoreRect =
+          (m_dragDirtyRect | currentBounds).intersected(rect());
         if (!restoreRect.isEmpty()) {
             QPainter restorePainter(&m_context.screenshot);
             restorePainter.setClipRect(restoreRect);
@@ -2185,8 +2186,10 @@ void CaptureWidget::drawGridDots(QPainter& painter,
     qreal maxY = limit.y();
     if (painter.hasClipping()) {
         const QRectF clip = painter.clipBoundingRect();
-        startIx = qMax(0, static_cast<int>(std::floor((clip.left() - radius) / step)));
-        startIy = qMax(0, static_cast<int>(std::floor((clip.top() - radius) / step)));
+        startIx =
+          qMax(0, static_cast<int>(std::floor((clip.left() - radius) / step)));
+        startIy =
+          qMax(0, static_cast<int>(std::floor((clip.top() - radius) / step)));
         maxX = qMin(maxX, clip.right() + radius);
         maxY = qMin(maxY, clip.bottom() + radius);
     }
@@ -2558,8 +2561,8 @@ QRect CaptureWidget::extendedSelection() const
 
 QRect CaptureWidget::extendedRect(const QRect& r) const
 {
-    return GeometryUtils::logicalToPixmap(r,
-                                          m_context.screenshot.devicePixelRatio());
+    return GeometryUtils::logicalToPixmap(
+      r, m_context.screenshot.devicePixelRatio());
 }
 
 QRect CaptureWidget::paddedUpdateRect(const QRect& r) const
@@ -2605,8 +2608,11 @@ void CaptureWidget::drawInactiveRegion(QPainter* painter)
     // Top, bottom, left, and right strips around the selection without
     // allocating a QRegion or stroking a border.
     if (r.top() > full.top()) {
-        painter->fillRect(
-          full.left(), full.top(), full.width(), r.top() - full.top(), overlayColor);
+        painter->fillRect(full.left(),
+                          full.top(),
+                          full.width(),
+                          r.top() - full.top(),
+                          overlayColor);
     }
     if (r.bottom() < full.bottom()) {
         painter->fillRect(full.left(),
@@ -2616,8 +2622,11 @@ void CaptureWidget::drawInactiveRegion(QPainter* painter)
                           overlayColor);
     }
     if (r.left() > full.left()) {
-        painter->fillRect(
-          full.left(), r.top(), r.left() - full.left(), r.height(), overlayColor);
+        painter->fillRect(full.left(),
+                          r.top(),
+                          r.left() - full.left(),
+                          r.height(),
+                          overlayColor);
     }
     if (r.right() < full.right()) {
         painter->fillRect(r.right() + 1,

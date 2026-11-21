@@ -301,9 +301,8 @@ void GeneralConf::exportFileConfiguration()
       QFileDialog::getSaveFileName(this, tr("Save File"), sourcePath);
 
     // Cancel button or target same as source
-    if (fileName.isEmpty() ||
-        QFileInfo(fileName).canonicalFilePath() ==
-          QFileInfo(sourcePath).canonicalFilePath()) {
+    if (fileName.isEmpty() || QFileInfo(fileName).canonicalFilePath() ==
+                                QFileInfo(sourcePath).canonicalFilePath()) {
         return;
     }
 

@@ -245,24 +245,23 @@ GlobalShortcutFilter::GlobalShortcutFilter(QObject* parent)
 
     syncHotkeys();
 
-    connect(
-      ConfigHandler::getInstance(),
-      &ConfigHandler::fileChanged,
-      this,
-      [this]() {
-          const bool newVal = ConfigHandler().replaceSnippingTool();
-          const bool newIntl =
-            shortcututils::needsIntlBackslashFallback(QKeySequence(
-              ConfigHandler().shortcut(QStringLiteral("TAKE_SCREENSHOT"))));
-          if (newVal != s_replaceSnippingTool ||
-              newIntl != s_intlBackslashCapture) {
-              s_replaceSnippingTool = newVal;
-              s_intlBackslashCapture = newIntl;
-              s_winShiftSConsumed = false;
-              s_prntScrConsumed = false;
-              syncHotkeys();
-          }
-      });
+    connect(ConfigHandler::getInstance(),
+            &ConfigHandler::fileChanged,
+            this,
+            [this]() {
+                const bool newVal = ConfigHandler().replaceSnippingTool();
+                const bool newIntl = shortcututils::needsIntlBackslashFallback(
+                  QKeySequence(ConfigHandler().shortcut(
+                    QStringLiteral("TAKE_SCREENSHOT"))));
+                if (newVal != s_replaceSnippingTool ||
+                    newIntl != s_intlBackslashCapture) {
+                    s_replaceSnippingTool = newVal;
+                    s_intlBackslashCapture = newIntl;
+                    s_winShiftSConsumed = false;
+                    s_prntScrConsumed = false;
+                    syncHotkeys();
+                }
+            });
 #endif
 }
 

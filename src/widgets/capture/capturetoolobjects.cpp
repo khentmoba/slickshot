@@ -123,10 +123,8 @@ int CaptureToolObjects::findWithRadius(const QPoint& pos,
         const QRect bounds = toolItem->boundingRect();
         if (bounds.isValid() &&
             !bounds
-               .adjusted(-currentRadius,
-                         -currentRadius,
-                         currentRadius,
-                         currentRadius)
+               .adjusted(
+                 -currentRadius, -currentRadius, currentRadius, currentRadius)
                .contains(pos)) {
             continue;
         }

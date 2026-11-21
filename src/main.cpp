@@ -728,9 +728,8 @@ int main(int argc, char* argv[])
         bool mainColor = parser.isSet(mainColorOption);
         bool contrastColor = parser.isSet(contrastColorOption);
         bool check = parser.isSet(checkOption);
-        bool someFlagSet =
-          (autostart || notification || filename || tray || showHelp ||
-           mainColor || contrastColor || check);
+        bool someFlagSet = (autostart || notification || filename || tray ||
+                            showHelp || mainColor || contrastColor || check);
         if (check) {
             AbstractLogger err = AbstractLogger::error(AbstractLogger::Stderr);
             bool ok = ConfigHandler().checkForErrors(&err);
