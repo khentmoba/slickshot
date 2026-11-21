@@ -164,8 +164,14 @@ void ImgUploaderBase::showPostUploadDialog()
 
 void ImgUploaderBase::openURL()
 {
-    bool successful = QDesktopServices::openUrl(m_imageURL);
-    if (!successful) {
+    const bool allowedScheme =
+      m_imageURL.isValid() &&
+      (m_imageURL.scheme().compare(QLatin1String("https"),
+                                   Qt::CaseInsensitive) == 0 ||
+       m_imageURL.scheme().compare(QLatin1String("http"),
+                                   Qt::CaseInsensitive) == 0);
+    bool successful = allowedScheme && QDesktopServices::openUrl(m_imageURL);
+    if (!successful && m_notification != nullptr) {
         m_notification->showMessage(tr("Unable to open the URL."));
     }
 }
@@ -173,13 +179,17 @@ void ImgUploaderBase::openURL()
 void ImgUploaderBase::copyURL()
 {
     FlameshotDaemon::copyToClipboard(m_imageURL.toString());
-    m_notification->showMessage(tr("URL copied to clipboard."));
+    if (m_notification != nullptr) {
+        m_notification->showMessage(tr("URL copied to clipboard."));
+    }
 }
 
 void ImgUploaderBase::copyImage()
 {
     FlameshotDaemon::copyToClipboard(m_pixmap);
-    m_notification->showMessage(tr("Screenshot copied to clipboard."));
+    if (m_notification != nullptr) {
+        m_notification->showMessage(tr("Screenshot copied to clipboard."));
+    }
 }
 
 void ImgUploaderBase::deleteCurrentImage()
@@ -192,9 +202,13 @@ void ImgUploaderBase::deleteCurrentImage()
 void ImgUploaderBase::saveScreenshotToFilesystem()
 {
     if (!saveToFilesystemGUI(m_pixmap)) {
-        m_notification->showMessage(
-          tr("Unable to save the screenshot to disk."));
+        if (m_notification != nullptr) {
+            m_notification->showMessage(
+              tr("Unable to save the screenshot to disk."));
+        }
         return;
     }
-    m_notification->showMessage(tr("Screenshot saved."));
+    if (m_notification != nullptr) {
+        m_notification->showMessage(tr("Screenshot saved."));
+    }
 }

@@ -49,6 +49,9 @@
 #endif
 
 namespace {
+constexpr QDataStream::Version kIpcStreamVersion = QDataStream::Qt_6_0;
+constexpr int kMaxIpcMessageBytes = 128 * 1024 * 1024;
+
 /**
  * @brief Read a pin message written by FlameshotDaemon::createPin.
  *
@@ -58,13 +61,25 @@ namespace {
  * from an older flameshot don't carry it, in which case the pixmap keeps the
  * ratio it was created with.
  */
-void readPin(QDataStream& stream, QPixmap& pixmap, QRect& geometry)
+bool readPin(QDataStream& stream, QPixmap& pixmap, QRect& geometry)
 {
-    qreal devicePixelRatio = 0;
-    stream >> pixmap >> geometry >> devicePixelRatio;
-    if (stream.status() == QDataStream::Ok && devicePixelRatio > 0) {
-        pixmap.setDevicePixelRatio(devicePixelRatio);
+    stream >> pixmap >> geometry;
+    if (stream.status() != QDataStream::Ok || pixmap.isNull()) {
+        return false;
     }
+    if (!stream.atEnd()) {
+        qreal devicePixelRatio = 0;
+        stream >> devicePixelRatio;
+        if (stream.status() == QDataStream::Ok && devicePixelRatio > 0 &&
+            devicePixelRatio <= 16.0) {
+            pixmap.setDevicePixelRatio(devicePixelRatio);
+        }
+    }
+    if (!geometry.isValid() || geometry.width() <= 0 ||
+        geometry.height() <= 0) {
+        geometry = QRect(QPoint(0, 0), pixmap.deviceIndependentSize().toSize());
+    }
+    return true;
 }
 }
 
@@ -164,6 +179,7 @@ void FlameshotDaemon::createPin(const QPixmap& capture, QRect geometry)
 
     QByteArray data;
     QDataStream stream(&data, QIODevice::WriteOnly);
+    stream.setVersion(kIpcStreamVersion);
 
     // A QPixmap loses its device pixel ratio when streamed, so send it along.
 #if defined(USE_KDSINGLEAPPLICATION) &&                                        \
@@ -192,6 +208,7 @@ void FlameshotDaemon::copyToClipboard(const QPixmap& capture)
 
     QByteArray data;
     QDataStream stream(&data, QIODevice::WriteOnly);
+    stream.setVersion(kIpcStreamVersion);
 
 #if defined(USE_KDSINGLEAPPLICATION) &&                                        \
   (defined(Q_OS_MACOS) || defined(Q_OS_WIN))
@@ -227,6 +244,7 @@ void FlameshotDaemon::copyToClipboard(const QString& text,
     auto kdsa = KDSingleApplication(QStringLiteral("org.flameshot.Flameshot"));
     QByteArray data;
     QDataStream stream(&data, QIODevice::WriteOnly);
+    stream.setVersion(kIpcStreamVersion);
     stream << QStringLiteral("attachTextToClipboard") << text << notification;
     if (kdsa.sendMessage(data)) {
         return;
@@ -297,6 +315,10 @@ void FlameshotDaemon::getLatestAvailableVersion()
     // This features is required for MacOS and Windows user and for Linux users
     // who installed SlickShot not from the repository.
     QNetworkRequest requestCheckUpdates(QUrl(FLAMESHOT_APP_VERSION_URL));
+    requestCheckUpdates.setTransferTimeout(30000);
+    requestCheckUpdates.setAttribute(
+      QNetworkRequest::RedirectPolicyAttribute,
+      QNetworkRequest::UserVerifiedRedirectPolicy);
     if (nullptr == m_networkCheckUpdates) {
         m_networkCheckUpdates = new QNetworkAccessManager(this);
         connect(m_networkCheckUpdates,
@@ -304,7 +326,35 @@ void FlameshotDaemon::getLatestAvailableVersion()
                 this,
                 &FlameshotDaemon::handleReplyCheckUpdates);
     }
-    m_networkCheckUpdates->get(requestCheckUpdates);
+    QNetworkReply* reply = m_networkCheckUpdates->get(requestCheckUpdates);
+    connect(reply, &QNetworkReply::redirected, reply, [reply](const QUrl& url) {
+        const QString host = url.host().toLower();
+        const QUrl normalized = url.adjusted(QUrl::NormalizePathSegments);
+        const QString rawPath = url.path(QUrl::FullyEncoded);
+        const QString path = normalized.path(QUrl::FullyDecoded);
+        const bool safeAuthority =
+          url.isValid() &&
+          url.scheme().compare(QLatin1String("https"), Qt::CaseInsensitive) ==
+            0 &&
+          url.userInfo().isEmpty() && (url.port() == -1 || url.port() == 443) &&
+          !rawPath.contains(QLatin1String("..")) &&
+          !path.contains(QLatin1String("..")) &&
+          !path.contains(QLatin1Char('\\'));
+        const bool trusted =
+          safeAuthority &&
+          ((host == QLatin1String("api.github.com") &&
+            path.startsWith(
+              QLatin1String("/repos/khentmoba/slickshot/releases"),
+              Qt::CaseInsensitive)) ||
+           (host == QLatin1String("github.com") &&
+            path.startsWith(QLatin1String("/khentmoba/slickshot/releases"),
+                            Qt::CaseInsensitive)));
+        if (trusted) {
+            emit reply->redirectAllowed();
+        } else {
+            reply->abort();
+        }
+    });
 
     // Re-check every 24 hours. Reuses one timer across manual checks.
     if (!m_updateCheckTimer) {
@@ -457,22 +507,32 @@ void FlameshotDaemon::attachScreenshotToClipboard(const QPixmap& pixmap)
 
 void FlameshotDaemon::attachPin(const QByteArray& data)
 {
+    if (data.isEmpty() || data.size() > kMaxIpcMessageBytes) {
+        return;
+    }
     QDataStream stream(data);
+    stream.setVersion(kIpcStreamVersion);
     QPixmap pixmap;
     QRect geometry;
 
-    readPin(stream, pixmap, geometry);
-
-    attachPin(pixmap, geometry);
+    if (readPin(stream, pixmap, geometry)) {
+        attachPin(pixmap, geometry);
+    }
 }
 
 void FlameshotDaemon::attachScreenshotToClipboard(const QByteArray& screenshot)
 {
+    if (screenshot.isEmpty() || screenshot.size() > kMaxIpcMessageBytes) {
+        return;
+    }
     QDataStream stream(screenshot);
+    stream.setVersion(kIpcStreamVersion);
     QPixmap p;
     stream >> p;
 
-    attachScreenshotToClipboard(p);
+    if (stream.status() == QDataStream::Ok && !p.isNull()) {
+        attachScreenshotToClipboard(p);
+    }
 }
 
 void FlameshotDaemon::attachTextToClipboard(const QString& text,
@@ -530,7 +590,14 @@ void FlameshotDaemon::handleReplyCheckUpdates(QNetworkReply* reply)
     }
 
     if (reply->error() == QNetworkReply::NoError) {
-        QJsonDocument response = QJsonDocument::fromJson(reply->readAll());
+        constexpr qint64 kMaxReleaseJsonBytes = 1024 * 1024;
+        const QByteArray payload = reply->read(kMaxReleaseJsonBytes + 1);
+        if (payload.size() > kMaxReleaseJsonBytes) {
+            qWarning() << "Update check response exceeded size limit.";
+            m_showManualCheckAppUpdateStatus = false;
+            return;
+        }
+        QJsonDocument response = QJsonDocument::fromJson(payload);
         QJsonObject json = response.object();
         const AppUpdateInfo release = AppUpdate::releaseInfo(json);
         m_appLatestVersion = release.version;
@@ -601,50 +668,52 @@ void FlameshotDaemon::call(const QDBusMessage& m)
 void FlameshotDaemon::messageReceivedFromSecondaryInstance(
   const QByteArray& message)
 {
-    // qDebug() << "Received message from second instance:" << message;
+    if (message.isEmpty() || message.size() > kMaxIpcMessageBytes) {
+        qWarning() << "Ignoring IPC message with invalid size:"
+                   << message.size();
+        return;
+    }
 
     QByteArray messageCopy = message;
     QBuffer buffer(&messageCopy);
     buffer.open(QIODevice::ReadOnly);
     QDataStream stream(&buffer);
+    stream.setVersion(kIpcStreamVersion);
     QString methodCall;
     stream >> methodCall;
-    // qDebug() << "Method:" << methodCall;
+    if (stream.status() != QDataStream::Ok) {
+        qWarning() << "Failed to decode IPC method name from second instance.";
+        return;
+    }
 
     if (methodCall == QStringLiteral("attachPin")) {
         QPixmap capture;
         QRect geometry;
-        readPin(stream, capture, geometry);
-        // qDebug() << "Pixmap:" << capture;
-        // qDebug() << "Geometry:" << geometry;
-        if (!capture.isNull()) {
+        if (readPin(stream, capture, geometry)) {
             FlameshotDaemon::instance()->attachPin(capture, geometry);
         } else {
-            qWarning() << "Received \"attachPin\" from second instance, but "
-                          "pixmap is empty!";
+            qWarning()
+              << "Received invalid \"attachPin\" from second instance.";
         }
     } else if (methodCall == QStringLiteral("attachScreenshotToClipboard")) {
         QPixmap capture;
         stream >> capture;
-        // qDebug() << "Pixmap:" << capture;
-        if (!capture.isNull()) {
+        if (stream.status() == QDataStream::Ok && !capture.isNull()) {
             FlameshotDaemon::instance()->attachScreenshotToClipboard(capture);
         } else {
             qWarning() << "Received \"attachScreenshotToClipboard\" from "
-                          "second instance, but pixmap is empty!";
+                          "second instance, but pixmap is empty or corrupt!";
         }
     } else if (methodCall == (QStringLiteral("attachTextToClipboard"))) {
         QString text;
         QString notification;
         stream >> text >> notification;
-        // qDebug() << "Text:" << text;
-        // qDebug() << "Notification:" << notification;
-        if (!text.isEmpty()) {
+        if (stream.status() == QDataStream::Ok && !text.isEmpty()) {
             FlameshotDaemon::instance()->attachTextToClipboard(text,
                                                                notification);
         } else {
             qWarning() << "Received \"attachTextToClipboard\" from second "
-                          "instance, but text is empty!";
+                          "instance, but text is empty or corrupt!";
         }
     } else if (methodCall == QStringLiteral("requestCapture") ||
                methodCall == QStringLiteral("gui")) {
@@ -652,7 +721,7 @@ void FlameshotDaemon::messageReceivedFromSecondaryInstance(
           CaptureRequest(CaptureRequest::GRAPHICAL_MODE));
     } else {
         qWarning() << "Received unknown message from second instance:"
-                   << message;
+                   << methodCall;
     }
 }
 #endif

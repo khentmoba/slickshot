@@ -53,6 +53,7 @@ private:
     QColor m_baseColor;
 
     bool m_expanding{ false };
+    bool m_antialiasingPinZoom{ false };
     qreal m_scaleFactor{ 1 };
     qreal m_opacity{ 1 };
     unsigned int m_rotateFactor{ 0 };

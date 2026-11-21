@@ -16,6 +16,7 @@
 #include "core/qguiappcurrentscreen.h"
 #include "tools/copy/copytool.h"
 #include "utils/abstractlogger.h"
+#include "utils/geometryutils.h"
 #include "utils/screengrabber.h"
 #include "utils/screenshotsaver.h"
 #include "utils/windowpicker.h"
@@ -145,7 +146,9 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
           grabber.grabEntireDesktop(ok, preSelectedMonitor);
         if (!ok) {
             // Error already logged in ScreenGrabber
+            m_captureFailed = true;
             this->close();
+            return;
         }
         m_context.origScreenshot = m_context.screenshot;
 
@@ -174,12 +177,11 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
             }
             move(topLeft);
         }
-        // On Windows, account for DPR when sizing the window
-        QSize windowSize = pixmap().size();
-        if (pixmap().devicePixelRatio() > 1.0) {
-            windowSize = QSize(pixmap().width() / pixmap().devicePixelRatio(),
-                               pixmap().height() / pixmap().devicePixelRatio());
-        }
+        // On Windows, account for DPR when sizing the window without truncating
+        // fractional logical dimensions on 125%/150%/175% displays.
+        QSize windowSize = selectedScreen
+                             ? selectedScreen->geometry().size()
+                             : pixmap().deviceIndependentSize().toSize();
         resize(windowSize);
 
         if (selectedScreen != nullptr && windowHandle()) {
@@ -191,8 +193,13 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
                            Qt::Tool);
         }
         QScreen* currentScreen = QGuiAppCurrentScreen().currentScreen();
-        move(currentScreen->geometry().x(), currentScreen->geometry().y());
-        resize(currentScreen->size());
+        if (currentScreen == nullptr) {
+            currentScreen = QGuiApplication::primaryScreen();
+        }
+        if (currentScreen != nullptr) {
+            move(currentScreen->geometry().x(), currentScreen->geometry().y());
+            resize(currentScreen->size());
+        }
 // LINUX
 #else
 // Call cmake with -DFLAMESHOT_DEBUG_CAPTURE=ON to enable easier debugging
@@ -213,12 +220,14 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
         if (selectedScreen == nullptr) {
             selectedScreen = QGuiApplication::primaryScreen();
         }
-        QRect screenGeom = selectedScreen->geometry();
-        move(screenGeom.topLeft());
-        resize(screenGeom.size());
+        if (selectedScreen != nullptr) {
+            QRect screenGeom = selectedScreen->geometry();
+            move(screenGeom.topLeft());
+            resize(screenGeom.size());
 
-        if (selectedScreen != nullptr && windowHandle()) {
-            windowHandle()->setScreen(selectedScreen);
+            if (windowHandle()) {
+                windowHandle()->setScreen(selectedScreen);
+            }
         }
         m_selectedScreen = selectedScreen;
 #endif
@@ -365,7 +374,9 @@ CaptureWidget::~CaptureWidget()
                 setLastRegion(selection);
             }
         }
-        emit Flameshot::instance()->captureFailed();
+        if (!m_captureFailed) {
+            emit Flameshot::instance()->captureFailed();
+        }
     }
 }
 
@@ -601,12 +612,17 @@ void CaptureWidget::initQuitPrompt()
     m_quitPrompt->show();
     QRect position = m_quitPrompt->frameGeometry();
     QScreen* currentScreen = QGuiAppCurrentScreen().currentScreen();
-    // The prompt is a child of the capture widget, so move() takes
-    // coordinates relative to it. The screen geometry is global, which only
-    // matches when the capture widget starts at the global origin.
-    position.moveCenter(
-      mapFromGlobal(currentScreen->availableGeometry().center()));
-    m_quitPrompt->move(position.topLeft());
+    if (currentScreen == nullptr) {
+        currentScreen = QGuiApplication::primaryScreen();
+    }
+    if (currentScreen != nullptr) {
+        // The prompt is a child of the capture widget, so move() takes
+        // coordinates relative to it. The screen geometry is global, which only
+        // matches when the capture widget starts at the global origin.
+        position.moveCenter(
+          mapFromGlobal(currentScreen->availableGeometry().center()));
+        m_quitPrompt->move(position.topLeft());
+    }
     m_quitPrompt->hide();
 
     QObject::connect(check, &QCheckBox::clicked, [](bool checked) {
@@ -1048,6 +1064,10 @@ void CaptureWidget::mouseMoveEvent(QMouseEvent* e)
         if (m_startMove) {
             QPointer<CaptureTool> activeTool =
               m_captureToolObjects.at(m_panel->activeLayerIndex());
+            if (activeTool.isNull() || activeTool->pos() == nullptr) {
+                m_startMove = false;
+                return;
+            }
             if (m_activeToolOffsetToMouseOnStart.isNull()) {
                 setCursor(Qt::ClosedHandCursor);
                 m_activeToolOffsetToMouseOnStart =
@@ -1583,6 +1603,9 @@ void CaptureWidget::handleToolSignal(CaptureTool::Request r)
                 break;
             } else {
                 QWidget* w = m_activeTool->widget();
+                if (w == nullptr) {
+                    break;
+                }
                 w->setAttribute(Qt::WA_DeleteOnClose);
                 w->activateWindow();
                 w->show();
@@ -1708,7 +1731,6 @@ void CaptureWidget::updateActiveLayer(int layer)
         pushObjectsStateToUndoStack();
     }
     drawToolsData();
-    drawObjectSelection();
     updateSelectionState();
 }
 
@@ -1716,10 +1738,12 @@ void CaptureWidget::onMoveCaptureToolUp(int captureToolIndex)
 {
     invalidateDragBase();
     m_captureToolObjectsBackup = m_captureToolObjects;
+    if (!m_captureToolObjects.move(captureToolIndex, captureToolIndex - 1)) {
+        m_captureToolObjectsBackup.clear();
+        return;
+    }
     pushObjectsStateToUndoStack();
-    auto tool = m_captureToolObjects.at(captureToolIndex);
-    m_captureToolObjects.removeAt(captureToolIndex);
-    m_captureToolObjects.insert(captureToolIndex - 1, tool);
+    drawToolsData();
     updateLayersPanel();
 }
 
@@ -1727,10 +1751,12 @@ void CaptureWidget::onMoveCaptureToolDown(int captureToolIndex)
 {
     invalidateDragBase();
     m_captureToolObjectsBackup = m_captureToolObjects;
+    if (!m_captureToolObjects.move(captureToolIndex, captureToolIndex + 1)) {
+        m_captureToolObjectsBackup.clear();
+        return;
+    }
     pushObjectsStateToUndoStack();
-    auto tool = m_captureToolObjects.at(captureToolIndex);
-    m_captureToolObjects.removeAt(captureToolIndex);
-    m_captureToolObjects.insert(captureToolIndex + 1, tool);
+    drawToolsData();
     updateLayersPanel();
 }
 
@@ -1924,8 +1950,9 @@ void CaptureWidget::updateSizeIndicator()
     }
     if (m_sizeIndButton) {
         const QRect& selection = extendedSelection();
-        m_sizeIndButton->setText(
-          QStringLiteral("%1\n%2").arg(selection.width(), selection.height()));
+        m_sizeIndButton->setText(QStringLiteral("%1\n%2")
+                                   .arg(selection.width())
+                                   .arg(selection.height()));
     }
 }
 
@@ -2049,6 +2076,7 @@ void CaptureWidget::invalidateDragBase()
 {
     m_dragBase = QPixmap();
     m_dragBaseLayer = -1;
+    m_dragDirtyRect = QRect();
 }
 
 void CaptureWidget::invalidateToolObjectsRegion()
@@ -2067,20 +2095,40 @@ void CaptureWidget::invalidateToolObjectsRegion()
 void CaptureWidget::redrawFromLayer(int layer)
 {
     const int count = m_captureToolObjects.size();
+    QRect currentBounds;
+    for (int index = layer; index < count; ++index) {
+        const QPointer<CaptureTool> tool = m_captureToolObjects.at(index);
+        if (!tool.isNull()) {
+            currentBounds |= paddedUpdateRect(tool->boundingRect());
+        }
+    }
+
     if (m_dragBase.isNull() || m_dragBaseLayer != layer) {
         // Objects below the dragged layer stay put while it moves, so compose
-        // them once and reuse that result for the following moves
+        // them once and detach m_context.screenshot once to avoid a full-screen
+        // copy on every mouse move.
         m_dragBase = m_context.origScreenshot;
         m_captureToolObjects.composeRange(m_dragBase, 0, layer);
         m_dragBaseLayer = layer;
+        m_context.screenshot = m_dragBase.copy();
+        m_dragDirtyRect = QRect();
+    } else {
+        const QRect restoreRect =
+          (m_dragDirtyRect | currentBounds).intersected(rect());
+        if (!restoreRect.isEmpty()) {
+            QPainter restorePainter(&m_context.screenshot);
+            restorePainter.setClipRect(restoreRect);
+            restorePainter.drawPixmap(0, 0, m_dragBase);
+        }
     }
-    m_context.screenshot = m_dragBase;
+
     m_captureToolObjects.composeRange(m_context.screenshot, layer, count);
     // The moved object and the ones drawn over it can change, so refresh them
-    for (int index = layer; index < count; ++index) {
-        update(
-          paddedUpdateRect(m_captureToolObjects.at(index)->boundingRect()));
+    const QRect repaintRect = m_dragDirtyRect | currentBounds;
+    if (!repaintRect.isEmpty()) {
+        update(repaintRect);
     }
+    m_dragDirtyRect = currentBounds;
     drawObjectSelection();
 }
 
@@ -2124,13 +2172,39 @@ void CaptureWidget::drawGridDots(QPainter& painter,
                                  int gridSize,
                                  const QColor& color)
 {
+    if (scale <= 0.0 || gridSize <= 0 || limit.x() <= 0.0 || limit.y() <= 0.0) {
+        return;
+    }
     painter.setPen(color);
     painter.setBrush(QBrush(color));
-    const auto step{ gridSize / scale };
-    const auto radius{ 1 * scale };
-    for (int y = 0; y < limit.y(); y += step) {
-        for (int x = 0; x < limit.x(); x += step) {
-            painter.drawEllipse(x, y, radius, radius);
+    const qreal step = gridSize / scale;
+    const qreal radius = 1.0 * scale;
+
+    int startIx = 0;
+    int startIy = 0;
+    qreal maxX = limit.x();
+    qreal maxY = limit.y();
+    if (painter.hasClipping()) {
+        const QRectF clip = painter.clipBoundingRect();
+        startIx =
+          qMax(0, static_cast<int>(std::floor((clip.left() - radius) / step)));
+        startIy =
+          qMax(0, static_cast<int>(std::floor((clip.top() - radius) / step)));
+        maxX = qMin(maxX, clip.right() + radius);
+        maxY = qMin(maxY, clip.bottom() + radius);
+    }
+
+    for (int iy = startIy;; ++iy) {
+        const qreal y = iy * step;
+        if (y >= maxY) {
+            break;
+        }
+        for (int ix = startIx;; ++ix) {
+            const qreal x = ix * step;
+            if (x >= maxX) {
+                break;
+            }
+            painter.drawEllipse(QRectF(x, y, radius, radius));
         }
     }
 }
@@ -2206,12 +2280,13 @@ void CaptureWidget::updateMagnifierArea()
 void CaptureWidget::drawToolsData(bool drawSelection)
 {
     invalidateDragBase();
-    // TODO refactor this for performance. The objects should not all be updated
-    // at once every time
     QPixmap pixmapItem = m_context.origScreenshot;
+    m_captureToolObjects.composeRange(
+      pixmapItem, 0, m_captureToolObjects.size());
     for (const auto& toolItem : m_captureToolObjects.captureToolObjects()) {
-        processPixmapWithTool(&pixmapItem, toolItem);
-        update(paddedUpdateRect(toolItem->boundingRect()));
+        if (!toolItem.isNull()) {
+            update(paddedUpdateRect(toolItem->boundingRect()));
+        }
     }
 
     m_context.screenshot = pixmapItem;
@@ -2420,9 +2495,8 @@ void CaptureWidget::setCaptureToolObjects(
 {
     // Used for undo/redo
     m_captureToolObjects = captureToolObjects;
-    drawToolsData();
     updateLayersPanel();
-    drawObjectSelection();
+    drawToolsData();
 }
 
 void CaptureWidget::undo()
@@ -2487,11 +2561,8 @@ QRect CaptureWidget::extendedSelection() const
 
 QRect CaptureWidget::extendedRect(const QRect& r) const
 {
-    auto devicePixelRatio = m_context.screenshot.devicePixelRatio();
-    return { static_cast<int>(r.left() * devicePixelRatio),
-             static_cast<int>(r.top() * devicePixelRatio),
-             static_cast<int>(r.width() * devicePixelRatio),
-             static_cast<int>(r.height() * devicePixelRatio) };
+    return GeometryUtils::logicalToPixmap(
+      r, m_context.screenshot.devicePixelRatio());
 }
 
 QRect CaptureWidget::paddedUpdateRect(const QRect& r) const
@@ -2512,7 +2583,7 @@ void CaptureWidget::drawErrorMessage(const QString& msg, QPainter* painter)
     };
     QScreen* currentScreen = QGuiAppCurrentScreen().currentScreen();
 
-    if (!textRect.contains(QCursor::pos(currentScreen))) {
+    if (!textRect.contains(mapFromGlobal(QCursor::pos(currentScreen)))) {
         QColor textColor(Qt::white);
         painter->setPen(textColor);
         painter->drawText(textRect, msg);
@@ -2521,15 +2592,47 @@ void CaptureWidget::drawErrorMessage(const QString& msg, QPainter* painter)
 
 void CaptureWidget::drawInactiveRegion(QPainter* painter)
 {
-    QColor overlayColor(0, 0, 0, m_opacity);
-    painter->setBrush(overlayColor);
-    QRect r;
-    if (m_selection->isVisible()) {
-        r = m_selection->geometry().normalized();
+    const QColor overlayColor(0, 0, 0, m_opacity);
+    const QRect full = rect();
+    if (!m_selection || !m_selection->isVisible()) {
+        painter->fillRect(full, overlayColor);
+        return;
     }
-    QRegion grey(rect());
-    grey = grey.subtracted(r);
 
-    painter->setClipRegion(grey);
-    painter->drawRect(-1, -1, rect().width() + 1, rect().height() + 1);
+    const QRect r = m_selection->geometry().normalized().intersected(full);
+    if (r.isEmpty()) {
+        painter->fillRect(full, overlayColor);
+        return;
+    }
+
+    // Top, bottom, left, and right strips around the selection without
+    // allocating a QRegion or stroking a border.
+    if (r.top() > full.top()) {
+        painter->fillRect(full.left(),
+                          full.top(),
+                          full.width(),
+                          r.top() - full.top(),
+                          overlayColor);
+    }
+    if (r.bottom() < full.bottom()) {
+        painter->fillRect(full.left(),
+                          r.bottom() + 1,
+                          full.width(),
+                          full.bottom() - r.bottom(),
+                          overlayColor);
+    }
+    if (r.left() > full.left()) {
+        painter->fillRect(full.left(),
+                          r.top(),
+                          r.left() - full.left(),
+                          r.height(),
+                          overlayColor);
+    }
+    if (r.right() < full.right()) {
+        painter->fillRect(r.right() + 1,
+                          r.top(),
+                          full.right() - r.right(),
+                          r.height(),
+                          overlayColor);
+    }
 }

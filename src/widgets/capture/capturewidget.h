@@ -58,6 +58,7 @@ public:
     ~CaptureWidget();
 
     QPixmap pixmap();
+    bool isCaptureValid() const { return !m_captureFailed; }
     void activateCaptureWindow();
     void setCaptureToolObjects(const CaptureToolObjects& captureToolObjects);
 #if !defined(DISABLE_UPDATE_CHECKER)
@@ -237,15 +238,15 @@ private:
     QPointer<QWidget> m_toolWidget;
     QPointer<QMessageBox> m_quitPrompt;
 
-    ButtonHandler* m_buttonHandler;
-    UtilityPanel* m_panel;
-    SidePanelWidget* m_sidePanel;
-    ColorPicker* m_colorPicker;
+    ButtonHandler* m_buttonHandler{ nullptr };
+    UtilityPanel* m_panel{ nullptr };
+    SidePanelWidget* m_sidePanel{ nullptr };
+    ColorPicker* m_colorPicker{ nullptr };
     ConfigHandler m_config;
-    NotifierBox* m_notifierBox;
-    HoverEventFilter* m_eventFilter;
-    SelectionWidget* m_selection;
-    MagnifierWidget* m_magnifier;
+    NotifierBox* m_notifierBox{ nullptr };
+    HoverEventFilter* m_eventFilter{ nullptr };
+    SelectionWidget* m_selection{ nullptr };
+    MagnifierWidget* m_magnifier{ nullptr };
     QString m_helpMessage;
 
     SelectionWidget::SideType m_mouseOverHandle;
@@ -277,11 +278,13 @@ private:
     // Grid tile cache promotes only extents unchanged across consecutive
     // paints.
     CaptureGridTileCache m_gridTileCache;
+    bool m_captureFailed{ false };
 
     // Composite of everything below the layer being dragged, reused across
     // mouse moves while that layer stays the same
     QPixmap m_dragBase;
     int m_dragBaseLayer{ -1 };
+    QRect m_dragDirtyRect;
 
     // Area the magnifier was last drawn in, so its old position is cleared
     QRect m_magnifierArea;

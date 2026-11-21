@@ -11,6 +11,11 @@ CaptureToolObjects::CaptureToolObjects(QObject* parent)
   : QObject(parent)
 {}
 
+CaptureToolObjects::~CaptureToolObjects()
+{
+    clear();
+}
+
 void CaptureToolObjects::append(const QPointer<CaptureTool>& captureTool)
 {
     if (!captureTool.isNull()) {
@@ -38,6 +43,11 @@ QPointer<CaptureTool> CaptureToolObjects::at(int index)
 
 void CaptureToolObjects::clear()
 {
+    for (const auto& item : m_captureToolObjects) {
+        if (!item.isNull()) {
+            delete item.data();
+        }
+    }
     m_captureToolObjects.clear();
 }
 
@@ -51,10 +61,23 @@ int CaptureToolObjects::size() const
     return static_cast<int>(m_captureToolObjects.size());
 }
 
+bool CaptureToolObjects::move(int from, int to)
+{
+    if (from < 0 || from >= m_captureToolObjects.size() || to < 0 ||
+        to >= m_captureToolObjects.size() || from == to) {
+        return false;
+    }
+    m_captureToolObjects.move(from, to);
+    return true;
+}
+
 void CaptureToolObjects::removeAt(int index)
 {
     if (index >= 0 && index < m_captureToolObjects.size()) {
-        m_captureToolObjects.removeAt(index);
+        const QPointer<CaptureTool> item = m_captureToolObjects.takeAt(index);
+        if (!item.isNull()) {
+            delete item.data();
+        }
     }
 }
 
@@ -95,6 +118,15 @@ int CaptureToolObjects::findWithRadius(const QPoint& pos,
             // Text has spaces inside to need to take a bigger currentRadius for
             // text objects search
             currentRadius += SEARCH_RADIUS_TEXT_HANDICAP;
+        }
+
+        const QRect bounds = toolItem->boundingRect();
+        if (bounds.isValid() &&
+            !bounds
+               .adjusted(
+                 -currentRadius, -currentRadius, currentRadius, currentRadius)
+               .contains(pos)) {
+            continue;
         }
 
         // Only the square around the click matters. Clip it to the canvas so
@@ -162,21 +194,20 @@ void CaptureToolObjects::composeRange(QPixmap& pixmap, int first, int end) const
 CaptureToolObjects& CaptureToolObjects::operator=(
   const CaptureToolObjects& other)
 {
-    // remove extra items for this if size is bigger
-    while (this->m_captureToolObjects.size() >
-           other.m_captureToolObjects.size()) {
-        this->m_captureToolObjects.removeLast();
+    if (this == &other) {
+        return *this;
     }
 
-    int count = 0;
+    QList<QPointer<CaptureTool>> newObjects;
+    newObjects.reserve(other.m_captureToolObjects.size());
     for (const auto& item : other.m_captureToolObjects) {
-        QPointer<CaptureTool> itemCopy = item->copy(item->parent());
-        if (count < this->m_captureToolObjects.size()) {
-            this->m_captureToolObjects[count] = itemCopy;
-        } else {
-            this->m_captureToolObjects.append(itemCopy);
+        if (item.isNull()) {
+            continue;
         }
-        count++;
+        newObjects.append(item->copy(item->parent()));
     }
+
+    clear();
+    m_captureToolObjects = std::move(newObjects);
     return *this;
 }

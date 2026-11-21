@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QTimer>
 #include <QWidget>
 
 class SidePanelWidget;
@@ -10,6 +11,7 @@ class ColorGrabWidget : public QWidget
     Q_OBJECT
 public:
     ColorGrabWidget(QPixmap* p, QWidget* parent = nullptr);
+    ~ColorGrabWidget() override;
 
     void startGrabbing();
 
@@ -35,11 +37,16 @@ private:
     void updateWidget();
     void finalize();
 
-    QPixmap* m_pixmap;
+    const QImage& cachedImage() const;
+
+    QPixmap m_pixmap;
+    mutable QImage m_cachedImage;
     QImage m_previewImage;
     QColor m_color;
+    QTimer m_extraZoomTimer;
 
     bool m_mousePressReceived;
     bool m_extraZoomActive;
     bool m_magnifierActive;
+    bool m_grabActive{ false };
 };

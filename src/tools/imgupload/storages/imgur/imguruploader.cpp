@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2017-2019 Alejandro Sirgo Rica & Contributors
 
 #include "imguruploader.h"
+#include "utils/abstractlogger.h"
 #include "utils/confighandler.h"
 #include "utils/filenamehandler.h"
 #include "utils/history.h"
@@ -89,13 +90,31 @@ ImgurUploader::ImgurUploader(const QPixmap& capture, QWidget* parent)
 
 void ImgurUploader::handleReply(QNetworkReply* reply)
 {
+    reply->deleteLater();
     spinner()->deleteLater();
     m_currentImageName.clear();
-    QJsonDocument response = QJsonDocument::fromJson(reply->readAll());
+    constexpr qint64 kMaxImgurReplyBytes = 1024 * 1024;
+    const QByteArray payload = reply->read(kMaxImgurReplyBytes + 1);
+    if (payload.size() > kMaxImgurReplyBytes) {
+        setInfoLabelText(tr("Upload response exceeded size limit."));
+        new QShortcut(Qt::Key_Escape, this, SLOT(close()));
+        return;
+    }
+    QJsonDocument response = QJsonDocument::fromJson(payload);
     QJsonObject json = response.object();
     if (reply->error() == QNetworkReply::NoError) {
         QJsonObject data = json[QStringLiteral("data")].toObject();
-        setImageURL(data[QStringLiteral("link")].toString());
+        const QUrl imageUrl(data[QStringLiteral("link")].toString());
+        if (!imageUrl.isValid() ||
+            (imageUrl.scheme().compare(QLatin1String("https"),
+                                       Qt::CaseInsensitive) != 0 &&
+             imageUrl.scheme().compare(QLatin1String("http"),
+                                       Qt::CaseInsensitive) != 0)) {
+            setInfoLabelText(tr("Invalid upload URL returned by server."));
+            new QShortcut(Qt::Key_Escape, this, SLOT(close()));
+            return;
+        }
+        setImageURL(imageUrl);
 
         const QString deleteToken =
           data[QStringLiteral("deletehash")].toString();
@@ -150,6 +169,7 @@ void ImgurUploader::upload()
     QUrl url(QStringLiteral("https://api.imgur.com/3/image"));
     url.setQuery(urlQuery);
     QNetworkRequest request(url);
+    request.setTransferTimeout(30000);
     request.setHeader(QNetworkRequest::ContentTypeHeader,
                       "application/x-www-form-urlencoded");
     request.setRawHeader("Authorization",
@@ -180,7 +200,11 @@ void ImgurUploader::deleteImage(const QString& fileName,
       QUrl(QStringLiteral("https://imgur.com/delete/%1")
              .arg(QString::fromLatin1(encoded))));
     if (!successful) {
-        notification()->showMessage(tr("Unable to open the URL."));
+        if (notification() != nullptr) {
+            notification()->showMessage(tr("Unable to open the URL."));
+        } else {
+            AbstractLogger::error() << tr("Unable to open the URL.");
+        }
     }
 
     emit deleteOk();

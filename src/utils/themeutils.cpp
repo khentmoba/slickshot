@@ -6,13 +6,19 @@
 #include <QPalette>
 #include <QStyleHints>
 
+#include <optional>
+
 #if defined(Q_OS_WIN)
 #include <QSettings>
 #endif
 
 namespace ThemeUtils {
 
-bool isSystemDarkMode()
+namespace {
+std::optional<bool> g_cachedDarkMode;
+bool g_colorSchemeConnected = false;
+
+bool querySystemDarkMode()
 {
 #if defined(Q_OS_WIN)
     QSettings personalizeSettings(
@@ -37,6 +43,23 @@ bool isSystemDarkMode()
     const QPalette defaultPalette = QGuiApplication::palette();
     return defaultPalette.color(QPalette::WindowText).lightness() >
            defaultPalette.color(QPalette::Window).lightness();
+}
+} // namespace
+
+bool isSystemDarkMode()
+{
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    if (!g_colorSchemeConnected && QGuiApplication::styleHints() != nullptr) {
+        g_colorSchemeConnected = true;
+        QObject::connect(QGuiApplication::styleHints(),
+                         &QStyleHints::colorSchemeChanged,
+                         []() { g_cachedDarkMode.reset(); });
+    }
+#endif
+    if (!g_cachedDarkMode.has_value()) {
+        g_cachedDarkMode = querySystemDarkMode();
+    }
+    return *g_cachedDarkMode;
 }
 
 QColor systemAccentColor()

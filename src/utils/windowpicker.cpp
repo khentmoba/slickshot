@@ -212,6 +212,40 @@ QRect WindowPicker::windowRectAt(const QPoint& globalPos)
     POINT physicalPoint{};
     if (QCursor::pos() == globalPos && GetCursorPos(&physicalPoint)) {
         // Use the exact OS physical cursor position to avoid mixed-DPI drift.
+    } else if (screen != nullptr) {
+        struct MonitorLookup
+        {
+            QString targetName;
+            bool found = false;
+            RECT rcMonitor{};
+        } lookup{ screen->name() };
+        EnumDisplayMonitors(
+          nullptr,
+          nullptr,
+          [](HMONITOR hmon, HDC, LPRECT, LPARAM lParam) -> BOOL {
+              auto* data = reinterpret_cast<MonitorLookup*>(lParam);
+              MONITORINFOEXW info{};
+              info.cbSize = sizeof(info);
+              if (GetMonitorInfoW(hmon, &info) &&
+                  QString::fromWCharArray(info.szDevice) == data->targetName) {
+                  data->rcMonitor = info.rcMonitor;
+                  data->found = true;
+                  return FALSE;
+              }
+              return TRUE;
+          },
+          reinterpret_cast<LPARAM>(&lookup));
+        if (lookup.found) {
+            const QPoint localLogical =
+              globalPos - screen->geometry().topLeft();
+            physicalPoint.x =
+              lookup.rcMonitor.left + qRound(localLogical.x() * dpr);
+            physicalPoint.y =
+              lookup.rcMonitor.top + qRound(localLogical.y() * dpr);
+        } else {
+            physicalPoint.x = qRound(globalPos.x() * dpr);
+            physicalPoint.y = qRound(globalPos.y() * dpr);
+        }
     } else {
         physicalPoint.x = qRound(globalPos.x() * dpr);
         physicalPoint.y = qRound(globalPos.y() * dpr);

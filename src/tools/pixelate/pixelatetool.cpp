@@ -3,6 +3,7 @@
 
 #include "pixelatetool.h"
 #include "utils/confighandler.h"
+#include "utils/geometryutils.h"
 
 #include <QApplication>
 #include <QColor>
@@ -98,13 +99,22 @@ void PixelateTool::process(QPainter& painter, const QPixmap& pixmap)
 {
     const bool useInsecurePixelate = m_insecurePixelate;
 
-    QRect selection = boundingRect().intersected(pixmap.rect());
+    const qreal pixelRatio = pixmap.devicePixelRatio();
+    if (pixelRatio <= 0.0 || pixmap.isNull()) {
+        return;
+    }
+    const QRect logicalBounds(QPoint(0, 0),
+                              (QSizeF(pixmap.size()) / pixelRatio).toSize());
+    QRect selection = boundingRect().intersected(logicalBounds);
     if (selection.isEmpty()) {
         return;
     }
-    const auto pixelRatio = pixmap.devicePixelRatio();
-    const QRect selectionScaled = QRect(selection.topLeft() * pixelRatio,
-                                        selection.bottomRight() * pixelRatio);
+    const QRect selectionScaled =
+      GeometryUtils::logicalToPixmap(selection, pixelRatio)
+        .intersected(pixmap.rect());
+    if (selectionScaled.isEmpty()) {
+        return;
+    }
 
     // The effect is deterministic for these inputs. Reuse the cached image
     // across paints (and mouse-move driven repaints) until one of them changes.
@@ -117,7 +127,15 @@ void PixelateTool::process(QPainter& painter, const QPixmap& pixmap)
         m_effectKey = key;
         m_effectValid = true;
     }
+    const bool prevSmooth =
+      painter.testRenderHint(QPainter::SmoothPixmapTransform);
+    if (!useInsecurePixelate || size() > 1) {
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
+    }
     painter.drawImage(selection, m_cachedEffect);
+    if (prevSmooth != painter.testRenderHint(QPainter::SmoothPixmapTransform)) {
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, prevSmooth);
+    }
 }
 
 QImage PixelateTool::computeEffect(const QPixmap& pixmap,
@@ -126,11 +144,11 @@ QImage PixelateTool::computeEffect(const QPixmap& pixmap,
                                    qreal pixelRatio,
                                    bool useInsecurePixelate) const
 {
-    const auto width =
-      static_cast<int>(selection.width() * (0.5 / qMax(1, size() + 1)));
-    const auto height =
-      static_cast<int>(selection.height() * (0.5 / qMax(1, size() + 1)));
-    const auto effectSize = QSize(qMax(width, 1), qMax(height, 1));
+    const int width = qMax(
+      1, static_cast<int>(selection.width() * (0.5 / qMax(1, size() + 1))));
+    const int height = qMax(
+      1, static_cast<int>(selection.height() * (0.5 / qMax(1, size() + 1))));
+    const QSize effectSize(width, height);
 
     if (useInsecurePixelate) {
         if (size() <= 1) {
@@ -166,16 +184,23 @@ QImage PixelateTool::computeEffect(const QPixmap& pixmap,
     }
 
     // the PRNG is only used for visual effects and NOT part of the security
-    // boundary
-    std::mt19937 prng(42);
+    // boundary. Fast xorshift32 + 3-uniform Irwin-Hall approximates Gaussian
+    // noise without per-pixel log/sqrt on the UI thread.
+    quint32 prngState = 42u;
+    auto nextFloat01 = [&prngState]() -> float {
+        prngState ^= prngState << 13;
+        prngState ^= prngState >> 17;
+        prngState ^= prngState << 5;
+        return static_cast<float>(prngState >> 8) * (1.0f / 16777216.0f);
+    };
+    auto nextApproxNormal = [&nextFloat01](float stddev) -> float {
+        // Sum of 3 U(0,1) minus 1.5 has mean 0 and variance 0.25 (stddev 0.5).
+        return (nextFloat01() + nextFloat01() + nextFloat01() - 1.5f) *
+               (2.0f * stddev);
+    };
 
-    // noise for the sampling process to avoid only sampling from a small
-    // subset of the fringe
-    std::normal_distribution<float> sampling_noise(0, 5 * size() + 1);
-
-    // additional noise that will be added on top of the effect to avoid
-    // generating a monochromatic box when the fringe is monochromatic
-    std::normal_distribution<float> noise(0, 0.1f);
+    const float samplingStdDev = static_cast<float>(5 * size() + 1);
+    constexpr float colorNoiseStdDev = 0.1f;
 
     QPoint const offset_top(0, selectionScaled.topLeft().y() == 0 ? 0 : -1);
     QPoint const offset_bottom(
@@ -223,6 +248,7 @@ QImage PixelateTool::computeEffect(const QPixmap& pixmap,
     // Image where the pseudo-pixelation is calculated.
     // This will later be scaled to cover the selected area.
     QImage pixelated = QImage(effectSize, QImage::Format_RGB32);
+    pixelated.fill(Qt::black);
     QRgb* const outBits = reinterpret_cast<QRgb*>(pixelated.bits());
     const qsizetype outStride =
       pixelated.bytesPerLine() / static_cast<qsizetype>(sizeof(QRgb));
@@ -236,6 +262,9 @@ QImage PixelateTool::computeEffect(const QPixmap& pixmap,
         fringeStride[i] = fringe[i].bytesPerLine();
         fringeW[i] = fringe[i].width();
         fringeH[i] = fringe[i].height();
+        if (fringeBits[i] == nullptr || fringeW[i] <= 0 || fringeH[i] <= 0) {
+            return pixelated;
+        }
     }
 
     constexpr float inv255 = 1.0f / 255.0f;
@@ -247,24 +276,24 @@ QImage PixelateTool::computeEffect(const QPixmap& pixmap,
     // Then a horizontal and vertical interpolation are calculated.
     std::array<std::array<float, 3>, 4> samples;
 
-    for (int x = 0; x < width; ++x) {
-        float const horizontal = x * invW;
-        float const minX = static_cast<float>(qMin(x, width - x)) * invW;
-        for (int y = 0; y < height; ++y) {
-            float n = noise(prng);
-
-            // relative horizontal resp. vertical position
-            float const vertical = y * invH;
+    for (int y = 0; y < height; ++y) {
+        QRgb* const outRow = outBits + y * outStride;
+        float const vertical = y * invH;
+        float const minY = static_cast<float>(qMin(y, height - y)) * invH;
+        for (int x = 0; x < width; ++x) {
+            float const n = nextApproxNormal(colorNoiseStdDev);
+            float const horizontal = x * invW;
+            float const minX = static_cast<float>(qMin(x, width - x)) * invW;
 
             for (int i = 0; i < 4; ++i) {
                 int const sx =
                   std::clamp(static_cast<int>(horizontal * fringeW[i] +
-                                              sampling_noise(prng)),
+                                              nextApproxNormal(samplingStdDev)),
                              0,
                              fringeW[i] - 1);
                 int const sy =
                   std::clamp(static_cast<int>(vertical * fringeH[i] +
-                                              sampling_noise(prng)),
+                                              nextApproxNormal(samplingStdDev)),
                              0,
                              fringeH[i] - 1);
                 QRgb const p = reinterpret_cast<const QRgb*>(
@@ -275,9 +304,7 @@ QImage PixelateTool::computeEffect(const QPixmap& pixmap,
             }
 
             // weights of the horizontal resp. vertical interpolation
-            float const weight_h =
-              minX - (static_cast<float>(qMin(y, height - y)) * invH) + 0.5f;
-
+            float const weight_h = minX - minY + 0.5f;
             float const weight_v = 1.0f - weight_h;
 
             // compute the weighted sum of the vertical and horizontal
@@ -299,14 +326,11 @@ QImage PixelateTool::computeEffect(const QPixmap& pixmap,
                 rgb[i] = static_cast<int>(0xff * c);
                 rgb[i] = std::clamp(rgb[i], 0, 0xff);
             }
-            outBits[y * outStride + x] = qRgb(rgb[0], rgb[1], rgb[2]);
+            outRow[x] = qRgb(rgb[0], rgb[1], rgb[2]);
         }
     }
 
-    return pixelated.scaled(selection.width(),
-                            selection.height(),
-                            Qt::IgnoreAspectRatio,
-                            Qt::FastTransformation);
+    return pixelated;
 }
 
 void PixelateTool::drawSearchArea(QPainter& painter, const QPixmap& pixmap)

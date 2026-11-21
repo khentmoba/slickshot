@@ -85,9 +85,14 @@ void raiseAboveMenuBar(QWidget* widget)
 #include <QDesktopServices>
 #include <QEventLoop>
 #include <QFile>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QScreen>
 #include <QThread>
+#if defined(Q_OS_WIN)
+#include <fcntl.h>
+#include <io.h>
+#endif
 #include <QTimer>
 #include <QUrl>
 #include <QVersionNumber>
@@ -262,8 +267,11 @@ CaptureWidget* Flameshot::gui(const CaptureRequest& req)
             if (nullptr == modalWidget) {
                 break;
             }
-            modalWidget->close();
-            modalWidget->deleteLater();
+            if (auto* dialog = qobject_cast<QDialog*>(modalWidget)) {
+                dialog->reject();
+            } else {
+                modalWidget->close();
+            }
             QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents,
                                             20);
         }
@@ -276,6 +284,12 @@ CaptureWidget* Flameshot::gui(const CaptureRequest& req)
 
         m_captureWindow = new CaptureWidget(request);
         m_guiOpening = false;
+        if (!m_captureWindow->isCaptureValid()) {
+            delete m_captureWindow;
+            m_captureWindow = nullptr;
+            emit captureFailed();
+            return nullptr;
+        }
 
 #ifdef Q_OS_WIN
         m_captureWindow->show();
@@ -528,7 +542,7 @@ void Flameshot::showDockIcon(QWidget* w)
 void Flameshot::openSavePath()
 {
     QString savePath = ConfigHandler().savePath();
-    if (!savePath.isEmpty()) {
+    if (!savePath.isEmpty() && QFileInfo(savePath).isDir()) {
         QDesktopServices::openUrl(QUrl::fromLocalFile(savePath));
     }
 }
@@ -627,9 +641,21 @@ void Flameshot::exportCapture(const QPixmap& capture,
     if (tasks & CR::PRINT_RAW) {
         QByteArray byteArray;
         QBuffer buffer(&byteArray);
-        capture.save(&buffer, "PNG");
-        if (QFile file; file.open(stdout, QIODevice::WriteOnly)) {
-            file.write(byteArray);
+        if (!buffer.open(QIODevice::WriteOnly) ||
+            !capture.save(&buffer, "PNG")) {
+            AbstractLogger::error()
+              << QObject::tr("Unable to encode raw PNG capture.");
+        } else {
+#if defined(Q_OS_WIN)
+            std::fflush(stdout);
+            _setmode(_fileno(stdout), _O_BINARY);
+#endif
+            QFile file;
+            if (!file.open(stdout, QIODevice::WriteOnly) ||
+                file.write(byteArray) != byteArray.size()) {
+                AbstractLogger::error()
+                  << QObject::tr("Unable to write raw PNG capture to stdout.");
+            }
             file.close();
         }
     }
@@ -670,19 +696,21 @@ void Flameshot::exportCapture(const QPixmap& capture,
         }
 
         ImgUploaderBase* widget = ImgUploaderManager().uploader(capture);
+        if (widget == nullptr) {
+            return;
+        }
         widget->show();
         widget->activateWindow();
         // NOTE: lambda can't capture 'this' because it might be destroyed later
         CR::ExportTask uploadTasks = static_cast<CR::ExportTask>(tasks);
         QObject::connect(
           widget, &ImgUploaderBase::uploadOk, [=, this](const QUrl& url) {
-              if (ConfigHandler().copyURLAfterUpload()) {
-                  if (!(uploadTasks & CR::COPY)) {
-                      FlameshotDaemon::copyToClipboard(
-                        url.toString(), tr("URL copied to clipboard."));
-                  }
-                  widget->showPostUploadDialog();
+              if (ConfigHandler().copyURLAfterUpload() &&
+                  !(uploadTasks & CR::COPY)) {
+                  FlameshotDaemon::copyToClipboard(
+                    url.toString(), tr("URL copied to clipboard."));
               }
+              widget->showPostUploadDialog();
           });
     }
 #endif

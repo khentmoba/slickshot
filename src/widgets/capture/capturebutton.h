@@ -23,8 +23,11 @@ public:
 
     void setColor(const QColor& c);
 
+protected:
+    CaptureButton(QWidget* parent, bool withDropShadow);
+
 private:
     QColor m_mainColor;
 
-    void init();
+    void init(bool withDropShadow = true);
 };

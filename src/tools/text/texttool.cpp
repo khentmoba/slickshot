@@ -285,7 +285,9 @@ void TextTool::drawEnd(const QPoint& point)
 
 void TextTool::drawMove(const QPoint& point)
 {
-    m_widget->move(point);
+    if (m_widget != nullptr) {
+        m_widget->move(point);
+    }
 }
 
 void TextTool::drawStart(const CaptureContext& context)

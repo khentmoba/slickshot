@@ -24,6 +24,8 @@ constexpr int MARGIN = 7;
 constexpr int BLUR_RADIUS = 2 * MARGIN;
 constexpr qreal STEP = 0.03;
 constexpr qreal MIN_SIZE = 100.0;
+constexpr qreal MAX_SCALE_FACTOR = 8.0;
+constexpr qreal MAX_PIN_DIMENSION = 16384.0;
 constexpr int ZOOM_SETTLE_INTERVAL = 150;
 }
 
@@ -64,6 +66,7 @@ PinWidget::PinWidget(const QPixmap& pixmap,
     m_shadowEffect->setOffset(0, 0);
     setGraphicsEffect(m_shadowEffect);
     m_shadowEffect->setEnabled(conf.pinShadow());
+    m_antialiasingPinZoom = conf.antialiasingPinZoom();
     setWindowOpacity(m_opacity);
 
     m_label->setPixmap(m_pixmap);
@@ -89,7 +92,9 @@ PinWidget::PinWidget(const QPixmap& pixmap,
 
     connect(
       ConfigHandler::getInstance(), &ConfigHandler::fileChanged, this, [this] {
-          m_shadowEffect->setEnabled(ConfigHandler().pinShadow());
+          ConfigHandler updatedConf;
+          m_shadowEffect->setEnabled(updatedConf.pinShadow());
+          m_antialiasingPinZoom = updatedConf.antialiasingPinZoom();
       });
 }
 
@@ -110,9 +115,19 @@ bool PinWidget::scrollEvent(QWheelEvent* event)
         if (angle.y() == 0) {
             return true;
         }
-        m_currentStepScaleFactor = angle.y() > 0
-                                     ? m_currentStepScaleFactor + STEP
-                                     : m_currentStepScaleFactor - STEP;
+        const qreal nextStep = angle.y() > 0 ? m_currentStepScaleFactor + STEP
+                                             : m_currentStepScaleFactor - STEP;
+        const qreal iw = qMax<qreal>(1.0, m_pixmap.width());
+        const qreal ih = qMax<qreal>(1.0, m_pixmap.height());
+        const qreal baseScale = qMax<qreal>(0.001, m_scaleFactor);
+        const qreal minScale = qMin(MIN_SIZE / iw, MIN_SIZE / ih) / baseScale;
+        const qreal maxDimW = qMin<qreal>(
+          maximumWidth(), qMin(iw * MAX_SCALE_FACTOR, MAX_PIN_DIMENSION));
+        const qreal maxDimH = qMin<qreal>(
+          maximumHeight(), qMin(ih * MAX_SCALE_FACTOR, MAX_PIN_DIMENSION));
+        const qreal maxScale = qMin(maxDimW / iw, maxDimH / ih) / baseScale;
+        m_currentStepScaleFactor =
+          qBound(qMin(minScale, maxScale), nextStep, qMax(minScale, maxScale));
         m_expanding = m_currentStepScaleFactor >= 1.0;
     }
 #if defined(Q_OS_MACOS)
@@ -245,21 +260,23 @@ void PinWidget::updatePixmap()
 {
     const auto aspectRatio =
       m_expanding ? Qt::KeepAspectRatioByExpanding : Qt::KeepAspectRatio;
-    const auto transformType = ConfigHandler().antialiasingPinZoom()
-                                 ? Qt::SmoothTransformation
-                                 : Qt::FastTransformation;
-    const qreal iw = m_pixmap.width();
-    const qreal ih = m_pixmap.height();
-    const qreal nw = qBound(MIN_SIZE,
-                            iw * m_currentStepScaleFactor * m_scaleFactor,
-                            static_cast<qreal>(maximumWidth()));
-    const qreal nh = qBound(MIN_SIZE,
-                            ih * m_currentStepScaleFactor * m_scaleFactor,
-                            static_cast<qreal>(maximumHeight()));
+    const qreal iw = qMax<qreal>(1.0, m_pixmap.width());
+    const qreal ih = qMax<qreal>(1.0, m_pixmap.height());
+    const qreal maxW = qMin<qreal>(
+      maximumWidth(), qMin(iw * MAX_SCALE_FACTOR, MAX_PIN_DIMENSION));
+    const qreal maxH = qMin<qreal>(
+      maximumHeight(), qMin(ih * MAX_SCALE_FACTOR, MAX_PIN_DIMENSION));
+    const qreal nw =
+      qBound(MIN_SIZE, iw * m_currentStepScaleFactor * m_scaleFactor, maxW);
+    const qreal nh =
+      qBound(MIN_SIZE, ih * m_currentStepScaleFactor * m_scaleFactor, maxH);
 
     const QSize scaledSize = m_pixmap.size().scaled(nw, nh, aspectRatio);
-    m_displaySize = (QSizeF(scaledSize) / m_pixmap.devicePixelRatio()).toSize();
-    renderPixmap(transformType);
+    const QSize logicalSize =
+      (QSizeF(scaledSize) / m_pixmap.devicePixelRatio()).toSize();
+    m_displaySize =
+      QSize(qMax(1, logicalSize.width()), qMax(1, logicalSize.height()));
+    renderPixmap(Qt::FastTransformation);
     adjustSize();
     m_qualityTimer.start();
 }
@@ -282,7 +299,8 @@ void PinWidget::finishZoom()
         return;
     }
     // Only replace the pixels: the settled image must not resize the window.
-    renderPixmap(Qt::SmoothTransformation);
+    renderPixmap(m_antialiasingPinZoom ? Qt::SmoothTransformation
+                                       : Qt::FastTransformation);
 }
 
 void PinWidget::pinchTriggered(QPinchGesture* gesture)
@@ -297,7 +315,15 @@ void PinWidget::pinchTriggered(QPinchGesture* gesture)
     if (gesture->changeFlags() & QPinchGesture::ScaleFactorChanged) {
         const qreal step = gesture->scaleFactor();
         if (step > 0.0 && !qFuzzyCompare(step, 1.0)) {
-            m_scaleFactor *= step;
+            const qreal iw = qMax<qreal>(1.0, m_pixmap.width());
+            const qreal ih = qMax<qreal>(1.0, m_pixmap.height());
+            const qreal minScale = qMin(MIN_SIZE / iw, MIN_SIZE / ih);
+            const qreal maxScale =
+              qMin(MAX_SCALE_FACTOR,
+                   qMin(MAX_PIN_DIMENSION / iw, MAX_PIN_DIMENSION / ih));
+            m_scaleFactor = qBound(qMin(minScale, maxScale),
+                                   m_scaleFactor * step,
+                                   qMax(minScale, maxScale));
             m_expanding = step > 1.0;
             scheduleUpdate = true;
         }

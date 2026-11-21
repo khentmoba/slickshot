@@ -266,6 +266,7 @@ int main(int argc, char* argv[])
             // quitting
             QByteArray data;
             QDataStream stream(&data, QIODevice::WriteOnly);
+            stream.setVersion(QDataStream::Qt_6_0);
             stream << QStringLiteral("requestCapture");
             kdsa.sendMessage(data);
 #endif
@@ -321,16 +322,16 @@ int main(int argc, char* argv[])
     }
 
     if (isScreenclipUri) {
-        new QApplication(argc, argv);
+        QApplication app(argc, argv);
 #ifdef USE_KDSINGLEAPPLICATION
         auto kdsa =
           KDSingleApplication(QStringLiteral("org.flameshot.Flameshot"));
         if (!kdsa.isPrimaryInstance()) {
             QByteArray data;
             QDataStream stream(&data, QIODevice::WriteOnly);
+            stream.setVersion(QDataStream::Qt_6_0);
             stream << QStringLiteral("requestCapture");
             kdsa.sendMessage(data);
-            delete qApp;
             return 0;
         }
 #endif
@@ -352,7 +353,7 @@ int main(int argc, char* argv[])
 
         CaptureRequest req(CaptureRequest::GRAPHICAL_MODE);
         flameshot->requestCapture(req);
-        return qApp->exec();
+        return app.exec();
     }
 #endif
 
@@ -569,6 +570,7 @@ int main(int argc, char* argv[])
         if (!ConfigHandler().allowMultipleGuiInstances()) {
             auto* mutex = guiMutexLock();
             if (!mutex) {
+                delete qApp;
                 return 1;
             }
             QObject::connect(
@@ -722,11 +724,12 @@ int main(int argc, char* argv[])
         bool notification = parser.isSet(notificationOption);
         bool filename = parser.isSet(filenameOption);
         bool tray = parser.isSet(trayOption);
+        bool showHelp = parser.isSet(showHelpOption);
         bool mainColor = parser.isSet(mainColorOption);
         bool contrastColor = parser.isSet(contrastColorOption);
         bool check = parser.isSet(checkOption);
         bool someFlagSet = (autostart || notification || filename || tray ||
-                            mainColor || contrastColor || check);
+                            showHelp || mainColor || contrastColor || check);
         if (check) {
             AbstractLogger err = AbstractLogger::error(AbstractLogger::Stderr);
             bool ok = ConfigHandler().checkForErrors(&err);
@@ -767,6 +770,9 @@ int main(int argc, char* argv[])
             }
             if (tray) {
                 config.setDisabledTrayIcon(parser.value(trayOption) == "false");
+            }
+            if (showHelp) {
+                config.setShowHelp(parser.value(showHelpOption) == "true");
             }
             if (mainColor) {
                 // TODO use value handler

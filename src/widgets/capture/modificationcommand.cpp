@@ -21,5 +21,9 @@ void ModificationCommand::undo()
 
 void ModificationCommand::redo()
 {
+    if (m_skipFirstRedo) {
+        m_skipFirstRedo = false;
+        return;
+    }
     m_captureWidget->setCaptureToolObjects(m_captureToolObjects);
 }

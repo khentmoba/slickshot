@@ -123,14 +123,19 @@ bool saveCaptureAtomically(const QPixmap& capture,
     }
 
     const QString ext = QFileInfo(filePath).suffix().toLower();
-    const QByteArray fmt = ext.toLatin1();
-    const char* format = QImageWriter::supportedImageFormats().contains(fmt)
-                           ? fmt.constData()
-                           : nullptr;
-    const bool encoded =
-      (ext == QLatin1String("jpg") || ext == QLatin1String("jpeg"))
-        ? capture.save(&file, format, jpegQuality)
-        : capture.save(&file, format);
+    QByteArray fmt = ext.toLatin1();
+    if (fmt.isEmpty() || !QImageWriter::supportedImageFormats().contains(fmt)) {
+        const QByteArray configuredFmt =
+          ConfigHandler().saveAsFileExtension().toLower().toLatin1();
+        fmt = !configuredFmt.isEmpty() &&
+                  QImageWriter::supportedImageFormats().contains(configuredFmt)
+                ? configuredFmt
+                : QByteArrayLiteral("png");
+    }
+    const char* format = fmt.constData();
+    const bool encoded = (fmt == "jpg" || fmt == "jpeg")
+                           ? capture.save(&file, format, jpegQuality)
+                           : capture.save(&file, format);
     if (!encoded) {
         if (file.error() != QFileDevice::NoError) {
             errorString = file.errorString();

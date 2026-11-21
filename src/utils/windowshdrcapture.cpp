@@ -3,6 +3,7 @@
 
 #include "windowshdrcapture.h"
 
+#include <QCoreApplication>
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QImage>
@@ -191,6 +192,21 @@ struct CaptureCache
 
 std::map<HMONITOR, CaptureCache> g_captureCaches;
 std::mutex g_captureMutex;
+std::once_flag g_cleanupRegistered;
+
+void cleanupCaptureCaches()
+{
+    std::lock_guard<std::mutex> lock(g_captureMutex);
+    g_captureCaches.clear();
+}
+
+void ensureCleanupRegistered()
+{
+    if (QCoreApplication::instance() != nullptr) {
+        std::call_once(g_cleanupRegistered,
+                       []() { qAddPostRoutine(cleanupCaptureCaches); });
+    }
+}
 
 // Called with g_captureMutex held.
 void pruneRemovedOutputs()
@@ -526,6 +542,7 @@ QPixmap WindowsHdrCapture::grabScreen(QScreen* screen)
 
     // A duplication and its immediate context cannot be used concurrently.
     // Keep the lock through acquisition, GPU readback and conversion.
+    ensureCleanupRegistered();
     std::lock_guard<std::mutex> lock(g_captureMutex);
     // Drop unplugged outputs so an old HMONITOR cannot retain GPU resources.
     pruneRemovedOutputs();

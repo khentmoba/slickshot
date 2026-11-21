@@ -173,8 +173,18 @@ void SidePanelWidget::onToolSizeChanged(int t)
     m_toolSizeSpin->setValue(m_toolSize);
 }
 
+SidePanelWidget::~SidePanelWidget()
+{
+    if (m_colorGrabber) {
+        m_colorGrabber->close();
+    }
+}
+
 void SidePanelWidget::startColorGrab()
 {
+    if (m_colorGrabber) {
+        m_colorGrabber->close();
+    }
     m_revertColor = m_color;
     m_colorGrabber = new ColorGrabWidget(m_pixmap);
     connect(m_colorGrabber,
@@ -194,11 +204,13 @@ void SidePanelWidget::startColorGrab()
     m_colorGrabber->startGrabbing();
 }
 
-void SidePanelWidget::onColorGrabFinished()
+void SidePanelWidget::onColorGrabFinished(const QColor& color)
 {
     finalizeGrab();
-    m_color = m_colorGrabber->color();
-    emit colorChanged(m_color);
+    if (color.isValid()) {
+        m_color = color;
+        emit colorChanged(m_color);
+    }
 }
 
 void SidePanelWidget::onColorGrabAborted()

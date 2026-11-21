@@ -3,7 +3,9 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QProcessEnvironment>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QStringList>
 
@@ -35,6 +37,14 @@ const QString& History::path()
 
 void History::save(const QPixmap& pixmap, const QString& fileName)
 {
+    if (pixmap.isNull() || fileName.isEmpty() ||
+        fileName == QLatin1String(".") || fileName == QLatin1String("..") ||
+        fileName.contains(QLatin1Char('/')) ||
+        fileName.contains(QLatin1Char('\\')) ||
+        QFileInfo(fileName).fileName() != fileName) {
+        return;
+    }
+
     // scale preview only in local disk
     QPixmap pixmapScaled = QPixmap(pixmap);
     if (pixmap.height() * HISTORYPIXMAP_MAX_PREVIEW_WIDTH >=
@@ -46,10 +56,14 @@ void History::save(const QPixmap& pixmap, const QString& fileName)
                                             Qt::SmoothTransformation);
     }
 
-    // save preview
-    QFile file(path() + fileName);
+    // save preview atomically
+    QSaveFile file(path() + fileName);
     if (file.open(QIODevice::WriteOnly)) {
-        pixmapScaled.save(&file, "PNG");
+        if (pixmapScaled.save(&file, "PNG")) {
+            file.commit();
+        } else {
+            file.cancelWriting();
+        }
     }
 
     history();

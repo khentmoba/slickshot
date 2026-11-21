@@ -97,8 +97,8 @@ AbstractLogger& AbstractLogger::attachNotificationPath(const QString& path)
     if (m_targets & Notification) {
         m_notificationPath = path;
     } else {
-        assert("Cannot attach notification path to a logger without a "
-               "notification channel.");
+        assert(false && "Cannot attach notification path to a logger without a "
+                        "notification channel.");
     }
     return *this;
 }

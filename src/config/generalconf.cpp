@@ -8,12 +8,14 @@
 #include <QComboBox>
 #include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QGroupBox>
 #include <QImageWriter>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSaveFile>
 #include <QSettings>
 #include <QSizePolicy>
 #include <QSpinBox>
@@ -257,42 +259,65 @@ void GeneralConf::importConfiguration()
     if (fileName.isEmpty()) {
         return;
     }
+    const QString configPath = ConfigHandler().configFilePath();
+    if (QFileInfo(fileName).canonicalFilePath() ==
+        QFileInfo(configPath).canonicalFilePath()) {
+        return;
+    }
     QFile file(fileName);
     if (!file.open(QFile::ReadOnly)) {
         QMessageBox::about(this, tr("Error"), tr("Unable to read file."));
         return;
     }
-    QStringDecoder decoder(QStringDecoder::System);
-    QString text = decoder(file.readAll());
+    constexpr qint64 kMaxConfigBytes = 1024 * 1024;
+    const QByteArray raw = file.read(kMaxConfigBytes + 1);
     file.close();
+    if (raw.size() > kMaxConfigBytes) {
+        QMessageBox::about(
+          this, tr("Error"), tr("Configuration file is too large."));
+        return;
+    }
 
-    QFile config(ConfigHandler().configFilePath());
-    if (!config.open(QFile::WriteOnly)) {
+    QSettings candidate(fileName, QSettings::IniFormat);
+    if (candidate.status() != QSettings::NoError) {
+        QMessageBox::about(
+          this, tr("Error"), tr("Selected file is not a valid configuration."));
+        return;
+    }
+
+    QSaveFile config(configPath);
+    if (!config.open(QFile::WriteOnly) || config.write(raw) != raw.size() ||
+        !config.commit()) {
+        config.cancelWriting();
         QMessageBox::about(this, tr("Error"), tr("Unable to write file."));
         return;
     }
-    QStringEncoder encoder(QStringEncoder::System);
-    config.write(encoder(text));
-    config.close();
 }
 
 void GeneralConf::exportFileConfiguration()
 {
-    QString defaultFileName = QSettings().fileName();
+    const QString sourcePath = ConfigHandler().configFilePath();
     QString fileName =
-      QFileDialog::getSaveFileName(this, tr("Save File"), defaultFileName);
+      QFileDialog::getSaveFileName(this, tr("Save File"), sourcePath);
 
     // Cancel button or target same as source
-    if (fileName.isNull() || fileName == defaultFileName) {
+    if (fileName.isEmpty() || QFileInfo(fileName).canonicalFilePath() ==
+                                QFileInfo(sourcePath).canonicalFilePath()) {
         return;
     }
 
-    QFile targetFile(fileName);
-    if (targetFile.exists()) {
-        targetFile.remove();
+    QFile sourceFile(sourcePath);
+    if (!sourceFile.open(QFile::ReadOnly)) {
+        QMessageBox::about(this, tr("Error"), tr("Unable to read file."));
+        return;
     }
-    bool ok = QFile::copy(ConfigHandler().configFilePath(), fileName);
-    if (!ok) {
+    const QByteArray raw = sourceFile.readAll();
+    sourceFile.close();
+
+    QSaveFile targetFile(fileName);
+    if (!targetFile.open(QFile::WriteOnly) ||
+        targetFile.write(raw) != raw.size() || !targetFile.commit()) {
+        targetFile.cancelWriting();
         QMessageBox::about(this, tr("Error"), tr("Unable to write file."));
     }
 }

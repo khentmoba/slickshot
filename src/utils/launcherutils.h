@@ -28,69 +28,53 @@ inline QStringList commandArguments(const QString& command,
         return {};
     }
 
-    const int placeholderPos = trimmed.indexOf(QLatin1Char('%'));
     QString program;
     QStringList arguments;
     bool substituted = false;
 
-    if (placeholderPos >= 0) {
-        const QString prefix = trimmed.left(placeholderPos).trimmed();
-
-        if (prefix.startsWith(QLatin1Char('"'))) {
-            const int closingQuote = prefix.indexOf(QLatin1Char('"'), 1);
-            if (closingQuote > 0) {
-                program = prefix.mid(1, closingQuote - 1);
-                arguments = QProcess::splitCommand(
-                  prefix.mid(closingQuote + 1).trimmed());
-            } else {
-                program = prefix.mid(1);
-            }
-        } else if (prefix.contains(QLatin1Char('/')) ||
-                   prefix.contains(QLatin1Char('\\'))) {
-            // A Windows path may contain spaces. Split off the first flag so
-            // it is not swallowed into the program name.
-            int splitAt = -1;
-            for (int i = 1; i < prefix.size() - 1; ++i) {
-                if (prefix.at(i) == QLatin1Char(' ') &&
-                    (prefix.at(i + 1) == QLatin1Char('-') ||
-                     prefix.at(i + 1) == QLatin1Char('/'))) {
-                    splitAt = i;
-                    break;
-                }
-            }
-            if (splitAt > 0) {
-                program = prefix.left(splitAt);
-                arguments =
-                  QProcess::splitCommand(prefix.mid(splitAt).trimmed());
-            } else {
-                program = prefix;
-            }
+    if (trimmed.startsWith(QLatin1Char('"'))) {
+        const int closingQuote = trimmed.indexOf(QLatin1Char('"'), 1);
+        if (closingQuote > 0) {
+            program = trimmed.mid(1, closingQuote - 1);
+            arguments =
+              QProcess::splitCommand(trimmed.mid(closingQuote + 1).trimmed());
         } else {
-            const QStringList parts = QProcess::splitCommand(prefix);
-            if (!parts.isEmpty()) {
-                program = parts.first();
-                arguments = parts.mid(1);
+            program = trimmed.mid(1);
+        }
+    } else if (trimmed.contains(QLatin1Char('/')) ||
+               trimmed.contains(QLatin1Char('\\'))) {
+        // A Windows path may contain spaces. Split off the first flag or
+        // standalone placeholder token so it is not swallowed into the program
+        // name.
+        int splitAt = -1;
+        for (int i = 1; i < trimmed.size() - 1; ++i) {
+            if (trimmed.at(i) == QLatin1Char(' ') &&
+                (trimmed.at(i + 1) == QLatin1Char('-') ||
+                 trimmed.at(i + 1) == QLatin1Char('/') ||
+                 trimmed.at(i + 1) == QLatin1Char('%'))) {
+                splitAt = i;
+                break;
             }
         }
-
-        arguments.append(QProcess::splitCommand(trimmed.mid(placeholderPos)));
-        static const QRegularExpression placeholder(QStringLiteral("%1?"));
-        for (QString& argument : arguments) {
-            const QString before = argument;
-            argument.replace(placeholder, filePath);
-            substituted = substituted || argument != before;
+        if (splitAt > 0) {
+            program = trimmed.left(splitAt);
+            arguments = QProcess::splitCommand(trimmed.mid(splitAt).trimmed());
+        } else {
+            program = trimmed;
         }
     } else {
-#if defined(Q_OS_WIN)
-        program = trimmed;
-#else
         const QStringList parts = QProcess::splitCommand(trimmed);
-        if (parts.isEmpty()) {
-            return {};
+        if (!parts.isEmpty()) {
+            program = parts.first();
+            arguments = parts.mid(1);
         }
-        program = parts.first();
-        arguments = parts.mid(1);
-#endif
+    }
+
+    static const QRegularExpression placeholder(QStringLiteral("%1?"));
+    for (QString& argument : arguments) {
+        const QString before = argument;
+        argument.replace(placeholder, filePath);
+        substituted = substituted || argument != before;
     }
 
     if (program.isEmpty()) {

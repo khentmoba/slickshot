@@ -290,6 +290,7 @@ ConfigHandler::ConfigHandler()
     if (firstInitialization) {
         // check for error every time the file changes
         m_configWatcher.reset(new QFileSystemWatcher());
+        qAddPostRoutine([]() { ConfigHandler::m_configWatcher.reset(); });
         ensureFileWatched();
         QObject::connect(m_configWatcher.data(),
                          &QFileSystemWatcher::fileChanged,
@@ -432,9 +433,12 @@ void ConfigHandler::ensureStartupLaunch(const bool start)
             QString quotedPath = QStringLiteral("\"%1\"").arg(app_path);
             bootUpSettings.setValue("SlickShot", quotedPath);
 
-            // set application workdir
+            // set application workdir and default executable path
             bootUpPath.beginGroup("flameshot.exe");
-            bootUpPath.setValue("Path", QCoreApplication::applicationDirPath());
+            bootUpPath.setValue("Default", app_path);
+            bootUpPath.setValue(
+              "Path",
+              QDir::toNativeSeparators(QCoreApplication::applicationDirPath()));
             bootUpPath.endGroup();
         }
     } else {
@@ -642,10 +646,15 @@ QString ConfigHandler::shortcut(const QString& actionName)
 void ConfigHandler::setValue(const QString& key, const QVariant& value)
 {
     assertKeyRecognized(key);
+    auto handler = valueHandler(key);
+    if (!handler) {
+        setErrorState(true);
+        return;
+    }
     if (!hasError()) {
         // don't let the file watcher initiate another error check
         m_skipNextErrorCheck = true;
-        auto val = valueHandler(key)->representation(value);
+        auto val = handler->representation(value);
         m_settings.setValue(key, val);
     }
 }
@@ -657,6 +666,10 @@ QVariant ConfigHandler::value(const QString& key) const
     auto val = m_settings.value(key);
 
     auto handler = valueHandler(key);
+    if (!handler) {
+        setErrorState(true);
+        return {};
+    }
 
     // Check the value for semantic errors
     if (val.isValid() && !handler->check(val)) {
@@ -676,7 +689,12 @@ void ConfigHandler::remove(const QString& key)
 
 void ConfigHandler::resetValue(const QString& key)
 {
-    m_settings.setValue(key, valueHandler(key)->fallback());
+    auto handler = valueHandler(key);
+    if (!handler) {
+        setErrorState(true);
+        return;
+    }
+    m_settings.setValue(key, handler->fallback());
 }
 
 QSet<QString>& ConfigHandler::recognizedGeneralOptions()
@@ -934,6 +952,7 @@ void ConfigHandler::ensureFileWatched() const
 {
     QFile file(m_settings.fileName());
     if (!file.exists()) {
+        QDir().mkpath(QFileInfo(m_settings.fileName()).absolutePath());
         // Append mode creates the file without truncating it if a concurrent
         // writer created it between exists() and open() (a 0-byte config).
         if (file.open(QFileDevice::WriteOnly | QFileDevice::Append)) {

@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QProcess>
+#include <QTemporaryFile>
 #include <QTimer>
 #include <windows.h>
 #ifdef _WIN32_WINNT
@@ -42,10 +43,22 @@ void showOpenWithMenu(const QPixmap& capture)
                              QDir::toNativeSeparators(openWithDir));
         return;
     }
-    const QString tempFile =
-      FileNameHandler().properScreenshotPath(openWithDir, "png");
-    bool ok = capture.save(tempFile);
+    QString baseName = QFileInfo(FileNameHandler().parsedPattern()).fileName();
+    if (baseName.isEmpty() || baseName == QLatin1String(".") ||
+        baseName == QLatin1String("..")) {
+        baseName = QStringLiteral("screenshot");
+    }
+    QTemporaryFile tmpFile(
+      QDir(openWithDir).filePath(baseName + QStringLiteral("_XXXXXX.png")));
+    tmpFile.setAutoRemove(false);
+    const bool opened = tmpFile.open();
+    const QString tempFile = opened ? tmpFile.fileName() : QString();
+    const bool ok = opened && capture.save(&tmpFile, "PNG");
+    tmpFile.close();
     if (!ok) {
+        if (!tempFile.isEmpty()) {
+            QFile::remove(tempFile);
+        }
         QMessageBox::about(nullptr,
                            QObject::tr("Error"),
                            QObject::tr("Unable to write in ") +

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "QtColorWidgets/color_wheel.hpp"
+#include <QPointer>
 #include <QSpinBox>
 #include <QWidget>
 
@@ -27,6 +28,7 @@ class SidePanelWidget : public QWidget
 
 public:
     explicit SidePanelWidget(QPixmap* p, QWidget* parent = nullptr);
+    ~SidePanelWidget() override;
 
 signals:
     void colorChanged(const QColor& color);
@@ -43,7 +45,7 @@ public slots:
     void startColorGrab();
 
 private slots:
-    void onColorGrabFinished();
+    void onColorGrabFinished(const QColor& color);
     void onColorGrabAborted();
     void onTemporaryColorUpdated(const QColor& color);
 
@@ -58,7 +60,7 @@ private:
 
     QVBoxLayout* m_layout;
     QPushButton* m_colorGrabButton;
-    ColorGrabWidget* m_colorGrabber{};
+    QPointer<ColorGrabWidget> m_colorGrabber;
     color_widgets::ColorWheel* m_colorWheel;
     QLabel* m_colorLabel;
     QLineEdit* m_colorHex;

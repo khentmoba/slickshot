@@ -1,4 +1,4 @@
-find_package(Qt${QT_VERSION_MAJOR} CONFIG QUIET COMPONENTS Test)
+find_package(Qt${QT_VERSION_MAJOR} CONFIG QUIET COMPONENTS Gui Test)
 
 if(Qt${QT_VERSION_MAJOR}Test_FOUND)
   set(CMAKE_AUTOMOC ON)
@@ -51,6 +51,19 @@ if(Qt${QT_VERSION_MAJOR}Test_FOUND)
         COMMENT "Deploying Qt runtime for tst_slickshot"
         VERBATIM
       )
+      # windeployqt only deploys qwindows; copy the offscreen platform plugin
+      # too so direct QT_QPA_PLATFORM=offscreen launches work outside CTest.
+      if(TARGET Qt${QT_VERSION_MAJOR}::QOffscreenIntegrationPlugin)
+        add_custom_command(TARGET tst_slickshot POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_FILE_DIR:tst_slickshot>/platforms
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:Qt${QT_VERSION_MAJOR}::QOffscreenIntegrationPlugin>
+            $<TARGET_FILE_DIR:tst_slickshot>/platforms
+          COMMENT "Deploying Qt offscreen platform plugin for tst_slickshot"
+          VERBATIM
+        )
+      endif()
     else()
       message(WARNING "windeployqt not found; tst_slickshot may fail outside CTest")
     endif()

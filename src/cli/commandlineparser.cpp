@@ -188,6 +188,9 @@ bool CommandLineParser::parse(const QStringList& args)
 {
     m_foundArgs.clear();
     m_foundOptions.clear();
+    if (args.isEmpty()) {
+        return true;
+    }
     bool ok = true;
     Node* actualNode = &m_parseTree;
     auto it = ++args.cbegin();

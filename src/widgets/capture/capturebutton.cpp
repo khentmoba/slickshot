@@ -11,13 +11,19 @@
 CaptureButton::CaptureButton(QWidget* parent)
   : QPushButton(parent)
 {
-    init();
+    init(true);
+}
+
+CaptureButton::CaptureButton(QWidget* parent, bool withDropShadow)
+  : QPushButton(parent)
+{
+    init(withDropShadow);
 }
 
 CaptureButton::CaptureButton(const QString& text, QWidget* parent)
   : QPushButton(text, parent)
 {
-    init();
+    init(true);
 }
 
 CaptureButton::CaptureButton(const QIcon& icon,
@@ -25,20 +31,22 @@ CaptureButton::CaptureButton(const QIcon& icon,
                              QWidget* parent)
   : QPushButton(icon, text, parent)
 {
-    init();
+    init(true);
 }
 
-void CaptureButton::init()
+void CaptureButton::init(bool withDropShadow)
 {
     setCursor(Qt::ArrowCursor);
     setFocusPolicy(Qt::NoFocus);
 
-    auto* dsEffect = new QGraphicsDropShadowEffect(this);
-    dsEffect->setBlurRadius(10);
-    dsEffect->setOffset(0, 3);
-    dsEffect->setColor(QColor(0, 0, 0, 150));
+    if (withDropShadow) {
+        auto* dsEffect = new QGraphicsDropShadowEffect(this);
+        dsEffect->setBlurRadius(10);
+        dsEffect->setOffset(0, 3);
+        dsEffect->setColor(QColor(0, 0, 0, 150));
 
-    setGraphicsEffect(dsEffect);
+        setGraphicsEffect(dsEffect);
+    }
 }
 
 QString CaptureButton::globalStyleSheet()

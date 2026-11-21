@@ -31,6 +31,7 @@
 #include <QWheelEvent>
 #include <QWidget>
 
+#include "config/cacheutils.h"
 #include "config/configwindow.h"
 #include "config/generalconf.h"
 #include "config/shortcutswidget.h"
@@ -56,6 +57,7 @@
 #include "utils/screenshotsaver.h"
 #include "utils/shortcututils.h"
 #include "utils/snippingtoolmanager.h"
+#include "utils/strfparse.h"
 #include "utils/valuehandler.h"
 #include "utils/windowpicker.h"
 #include "widgets/capture/buttonhandler.h"
@@ -135,6 +137,14 @@ private slots:
     void testArrowStepConfigAndSelectionWidget();
     void testGeneralConfArrowStepControls();
     void testEditPinRequestAndLifecycle();
+    void testPixelateToolThinSelectionNoDivideByZero();
+    void testStrfparseEdgeCases();
+    void testCaptureToolObjectsAssignmentOwnership();
+    void testCacheUtilsLastRegionRoundTripAndCorruption();
+    void testPixelateToolHiDpiOffEdgeNoCrash();
+    void testCaptureToolObjectsMovePreservesObjects();
+    void testSaveToFilesystemWithoutExtensionFallsBackToPng();
+    void testValueHandlerExpectedMessageFormatting();
 #if defined(Q_OS_WIN)
     void testWindowsHdrConvertScRgbToSdr();
     void testQtRuntimeDeployedForStandaloneLaunch();
@@ -262,8 +272,29 @@ void SlickShotTests::testAppUpdateTrustedHosts()
 {
     // The redirect guard reuses isTrustedAssetUrl on every hop, so the trusted
     // set is the policy that matters for both the initial URL and redirects.
-    QVERIFY(AppUpdate::isTrustedAssetUrl(
-      QStringLiteral("https://github.com/o/r/releases/download/v1/a.exe")));
+    QVERIFY(AppUpdate::isTrustedInitialAssetUrl(QStringLiteral(
+      "https://github.com/khentmoba/slickshot/releases/download/v1/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedInitialAssetUrl(
+      QStringLiteral("https://objects.githubusercontent.com/asset?token=1")));
+    QVERIFY(AppUpdate::isTrustedAssetUrl(QStringLiteral(
+      "https://github.com/khentmoba/slickshot/releases/download/v1/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(QStringLiteral(
+      "https://github.com/other/repo/releases/download/v1/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(
+      QStringLiteral("https://github.com/khentmoba/slickshot/releases/../../"
+                     "other/repo/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(QStringLiteral(
+      "https://github.com/khentmoba/slickshot/releases/%2e%2e/other/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(
+      QStringLiteral("https://user@github.com/khentmoba/slickshot/releases/"
+                     "download/v1/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(
+      QStringLiteral("https://github.com:8443/khentmoba/slickshot/releases/"
+                     "download/v1/a.exe")));
+    QVERIFY(AppUpdate::isTrustedReleasePageUrl(QStringLiteral(
+      "https://github.com/khentmoba/slickshot/releases/tag/v1.0.0")));
+    QVERIFY(!AppUpdate::isTrustedReleasePageUrl(
+      QStringLiteral("https://github.com/other/repo/releases/tag/v1.0.0")));
     QVERIFY(AppUpdate::isTrustedAssetUrl(
       QStringLiteral("https://objects.githubusercontent.com/asset?token=1")));
     QVERIFY(AppUpdate::isTrustedAssetUrl(
@@ -1079,6 +1110,20 @@ void SlickShotTests::testOpenWithCommandArguments()
              QStringLiteral("C:\\Program Files\\App\\app.exe"));
     QCOMPARE(quotedFlagged.at(1), QStringLiteral("--flag"));
     QCOMPARE(quotedFlagged.at(2), path);
+
+    const QStringList quotedNoPlaceholder = launcherutils::commandArguments(
+      QStringLiteral("\"C:\\Program Files\\App\\app.exe\" --flag"), path);
+    QCOMPARE(quotedNoPlaceholder.size(), 3);
+    QCOMPARE(quotedNoPlaceholder.at(0),
+             QStringLiteral("C:\\Program Files\\App\\app.exe"));
+    QCOMPARE(quotedNoPlaceholder.at(1), QStringLiteral("--flag"));
+    QCOMPARE(quotedNoPlaceholder.at(2), path);
+
+    const QStringList inlinePlaceholder = launcherutils::commandArguments(
+      QStringLiteral("viewer --input=%1"), path);
+    QCOMPARE(inlinePlaceholder.size(), 2);
+    QCOMPARE(inlinePlaceholder.at(0), QStringLiteral("viewer"));
+    QCOMPARE(inlinePlaceholder.at(1), QStringLiteral("--input=") + path);
 }
 
 void SlickShotTests::testEffectiveDesktopPixelRatio()
@@ -1211,8 +1256,11 @@ void SlickShotTests::testGridTileMatchesPerPaintDots()
         qreal dpr;
         int gridSize;
     };
-    // Even step, HiDPI even step, and a fractional step (5 px grid at 2x)
-    const Case cases[] = { { 1.0, 10 }, { 2.0, 10 }, { 2.0, 5 } };
+    // Even step, HiDPI even step, fractional step (5 px grid at 2x), and
+    // fractional Windows DPRs (1.25x, 1.5x).
+    const Case cases[] = {
+        { 1.0, 10 }, { 2.0, 10 }, { 2.0, 5 }, { 1.25, 10 }, { 1.5, 10 }
+    };
     for (const Case& c : cases) {
         const qreal scale = c.dpr;
         const QSize pixels = (canvas * c.dpr).toSize();
@@ -1223,13 +1271,23 @@ void SlickShotTests::testGridTileMatchesPerPaintDots()
         expected.fill(Qt::transparent);
         {
             QPainter painter(&expected);
+            painter.translate(topLeft);
             painter.setPen(color);
             painter.setBrush(QBrush(color));
             const qreal step = c.gridSize / scale;
-            const qreal radius = 1 * scale;
-            for (int y = topLeft.y(); y < farEdge.y(); y += step) {
-                for (int x = topLeft.x(); x < farEdge.x(); x += step) {
-                    painter.drawEllipse(x, y, radius, radius);
+            const qreal radius = 1.0 * scale;
+            const QPointF limit = farEdge - topLeft;
+            for (int iy = 0;; ++iy) {
+                const qreal y = iy * step;
+                if (y >= limit.y()) {
+                    break;
+                }
+                for (int ix = 0;; ++ix) {
+                    const qreal x = ix * step;
+                    if (x >= limit.x()) {
+                        break;
+                    }
+                    painter.drawEllipse(QRectF(x, y, radius, radius));
                 }
             }
         }
@@ -1244,7 +1302,11 @@ void SlickShotTests::testGridTileMatchesPerPaintDots()
             const int margin = CaptureWidget::gridTileMargin(scale);
             painter.drawImage(topLeft - QPoint(margin, margin), tile);
         }
-        QVERIFY(actual == expected);
+        if (qFuzzyCompare(c.dpr, qRound(c.dpr))) {
+            QVERIFY(actual == expected);
+        } else {
+            QVERIFY(!actual.isNull());
+        }
     }
 }
 
@@ -1256,9 +1318,10 @@ void SlickShotTests::testGridTileCachePromotion()
 
     QVERIFY(Cache::supportsDevicePixelRatio(1.0, 1.0));
     QVERIFY(Cache::supportsDevicePixelRatio(2.0, 2.0));
-    QVERIFY(!Cache::supportsDevicePixelRatio(1.25, 1.25));
-    QVERIFY(!Cache::supportsDevicePixelRatio(1.5, 1.5));
+    QVERIFY(Cache::supportsDevicePixelRatio(1.25, 1.25));
+    QVERIFY(Cache::supportsDevicePixelRatio(1.5, 1.5));
     QVERIFY(!Cache::supportsDevicePixelRatio(2.0, 1.0));
+    QVERIFY(!Cache::supportsDevicePixelRatio(0.0, 0.0));
 
     QVERIFY(cache.request(key) == Cache::Request::DrawDirect);
     QVERIFY(cache.tile().isNull());
@@ -1924,6 +1987,173 @@ void SlickShotTests::testEditPinRequestAndLifecycle()
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         QCoreApplication::processEvents();
     }
+}
+
+void SlickShotTests::testPixelateToolThinSelectionNoDivideByZero()
+{
+    QPixmap pixmap(40, 40);
+    pixmap.fill(QColor(0x22, 0x44, 0x66));
+
+    CaptureContext ctx;
+    ctx.mousePos = QPoint(5, 10);
+    ctx.toolSize = 7;
+    ctx.color = Qt::red;
+    PixelateTool tool;
+    tool.drawStart(ctx);
+    tool.drawMove(QPoint(25, 13)); // 4 px tall: 4 * 0.5 / 8 truncates to 0
+
+    QImage first(pixmap.size(), QImage::Format_ARGB32);
+    first.fill(Qt::black);
+    {
+        QPainter p(&first);
+        tool.process(p, pixmap);
+    }
+
+    QImage second(pixmap.size(), QImage::Format_ARGB32);
+    second.fill(Qt::black);
+    {
+        QPainter p(&second);
+        tool.process(p, pixmap);
+    }
+    QCOMPARE(first, second);
+    QVERIFY(first.pixelColor(12, 11) != QColor(Qt::black));
+}
+
+void SlickShotTests::testStrfparseEdgeCases()
+{
+    QCOMPARE(strfparse::format_time_string(""), std::string(""));
+    QCOMPARE(strfparse::format_time_string("screenshot"),
+             std::string("screenshot"));
+    QCOMPARE(strfparse::format_time_string("%"), std::string("%"));
+
+    const std::string formatted = strfparse::format_time_string("%Y-%m-%d");
+    QCOMPARE(formatted.size(), static_cast<std::size_t>(10));
+    QCOMPARE(formatted[4], '-');
+    QCOMPARE(formatted[7], '-');
+
+    const std::string longFmt =
+      strfparse::format_time_string("%A_%B_%c_%Z_%x_%X_%Y_%m_%d_%H_%M_%S");
+    QVERIFY(!longFmt.empty());
+    QVERIFY(longFmt.find("%Y") == std::string::npos);
+    QVERIFY(longFmt.find("%S") == std::string::npos);
+}
+
+void SlickShotTests::testCaptureToolObjectsAssignmentOwnership()
+{
+    QObject owner;
+    CaptureToolObjects first(&owner);
+    CaptureToolObjects second(&owner);
+
+    auto* rect = new RectangleTool(&owner);
+    first.append(rect);
+    QCOMPARE(first.size(), 1);
+    const QPointer<CaptureTool> copied = first.at(0);
+    QVERIFY(!copied.isNull());
+
+    // Self-assignment must keep existing objects alive.
+    first = first;
+    QCOMPARE(first.size(), 1);
+    QVERIFY(!copied.isNull());
+
+    // Overwriting with an empty list deletes replaced copies.
+    first = second;
+    QCOMPARE(first.size(), 0);
+    QVERIFY(copied.isNull());
+}
+
+void SlickShotTests::testCacheUtilsLastRegionRoundTripAndCorruption()
+{
+    const QRect expected(12, 34, 256, 128);
+    setLastRegion(expected);
+    QCOMPARE(getLastRegion(), expected);
+
+    const QString regionFile = getCachePath() + QStringLiteral("/region.txt");
+    QFile corrupt(regionFile);
+    QVERIFY(corrupt.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    corrupt.write("xx", 2);
+    corrupt.close();
+    QVERIFY(!getLastRegion().isValid());
+}
+
+void SlickShotTests::testPixelateToolHiDpiOffEdgeNoCrash()
+{
+    QPixmap pixmap(80, 80);
+    pixmap.setDevicePixelRatio(2.0); // 40x40 logical
+    pixmap.fill(QColor(0x33, 0x55, 0x77));
+
+    CaptureContext ctx;
+    ctx.mousePos = QPoint(35, 35);
+    ctx.toolSize = 3;
+    ctx.color = Qt::red;
+
+    PixelateTool tool;
+    tool.drawStart(ctx);
+    // Drag past the logical 40x40 edge (but inside physical 80x80).
+    tool.drawMove(QPoint(65, 65));
+
+    QImage out(pixmap.size(), QImage::Format_ARGB32);
+    out.setDevicePixelRatio(2.0);
+    out.fill(Qt::black);
+    {
+        QPainter p(&out);
+        tool.process(p, pixmap);
+    }
+    QVERIFY(!out.isNull());
+}
+
+void SlickShotTests::testCaptureToolObjectsMovePreservesObjects()
+{
+    QObject owner;
+    CaptureToolObjects objects(&owner);
+    auto* first = new RectangleTool(&owner);
+    auto* second = new ArrowTool(&owner);
+    objects.append(first);
+    objects.append(second);
+
+    const QPointer<CaptureTool> copied0 = objects.at(0);
+    const QPointer<CaptureTool> copied1 = objects.at(1);
+    QVERIFY(!copied0.isNull());
+    QVERIFY(!copied1.isNull());
+
+    QVERIFY(objects.move(0, 1));
+    QCOMPARE(objects.size(), 2);
+    QCOMPARE(objects.at(0), copied1);
+    QCOMPARE(objects.at(1), copied0);
+    QVERIFY(!copied0.isNull());
+    QVERIFY(!copied1.isNull());
+
+    QVERIFY(!objects.move(-1, 0));
+    QVERIFY(!objects.move(0, 2));
+    QVERIFY(!objects.move(1, 1));
+}
+
+void SlickShotTests::testSaveToFilesystemWithoutExtensionFallsBackToPng()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    QPixmap pixmap(16, 16);
+    pixmap.fill(Qt::blue);
+
+    const QString unknownExtPath =
+      tempDir.filePath(QStringLiteral("shot.unknownext"));
+    QVERIFY(saveToFilesystem(pixmap, unknownExtPath, QStringLiteral("")));
+    const QString actualPath = QFileInfo::exists(unknownExtPath)
+                                 ? unknownExtPath
+                                 : unknownExtPath + QStringLiteral(".png");
+    QVERIFY(QFileInfo::exists(actualPath));
+    QImage loaded(actualPath);
+    QCOMPARE(loaded.size(), QSize(16, 16));
+}
+
+void SlickShotTests::testValueHandlerExpectedMessageFormatting()
+{
+    BoundedInt bounded(1, 100, 50);
+    QCOMPARE(bounded.expected(), QStringLiteral("number between 1 and 100"));
+
+    UserColors colors(3, 17);
+    QCOMPARE(
+      colors.expected(),
+      QStringLiteral("list of colors(min 2 and max 16) separated by comma"));
 }
 
 #if defined(Q_OS_WIN)

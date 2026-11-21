@@ -27,8 +27,8 @@ private:
     void startGuiCapture();
     void startGuiCaptureOnScreen(int screenIndex);
 
-    QMenu* m_menu;
-    QMenu* m_screenMenu;
+    QMenu* m_menu{ nullptr };
+    QMenu* m_screenMenu{ nullptr };
     QAction* m_captureAction;
     QAction* m_launcherAction;
     QAction* m_infoAction;
