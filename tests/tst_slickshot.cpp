@@ -298,9 +298,9 @@ void SlickShotTests::testAppUpdateInstallScriptAndEncode()
     const QString psPath = AppUpdate::powershellExecutablePath();
     QVERIFY(!psPath.isEmpty());
     QVERIFY(QFileInfo(psPath).isAbsolute());
-    QVERIFY(psPath.endsWith(
-      QStringLiteral("WindowsPowerShell\\v1.0\\powershell.exe"),
-      Qt::CaseInsensitive));
+    QVERIFY(
+      psPath.endsWith(QStringLiteral("WindowsPowerShell\\v1.0\\powershell.exe"),
+                      Qt::CaseInsensitive));
     QVERIFY(QFileInfo::exists(psPath));
 #endif
 
