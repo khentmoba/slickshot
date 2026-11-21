@@ -274,20 +274,23 @@ void SlickShotTests::testAppUpdateTrustedHosts()
     // set is the policy that matters for both the initial URL and redirects.
     QVERIFY(AppUpdate::isTrustedInitialAssetUrl(QStringLiteral(
       "https://github.com/khentmoba/slickshot/releases/download/v1/a.exe")));
-    QVERIFY(!AppUpdate::isTrustedInitialAssetUrl(QStringLiteral(
-      "https://objects.githubusercontent.com/asset?token=1")));
+    QVERIFY(!AppUpdate::isTrustedInitialAssetUrl(
+      QStringLiteral("https://objects.githubusercontent.com/asset?token=1")));
     QVERIFY(AppUpdate::isTrustedAssetUrl(QStringLiteral(
       "https://github.com/khentmoba/slickshot/releases/download/v1/a.exe")));
-    QVERIFY(!AppUpdate::isTrustedAssetUrl(
-      QStringLiteral("https://github.com/other/repo/releases/download/v1/a.exe")));
     QVERIFY(!AppUpdate::isTrustedAssetUrl(QStringLiteral(
-      "https://github.com/khentmoba/slickshot/releases/../../other/repo/a.exe")));
+      "https://github.com/other/repo/releases/download/v1/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(
+      QStringLiteral("https://github.com/khentmoba/slickshot/releases/../../"
+                     "other/repo/a.exe")));
     QVERIFY(!AppUpdate::isTrustedAssetUrl(QStringLiteral(
       "https://github.com/khentmoba/slickshot/releases/%2e%2e/other/a.exe")));
-    QVERIFY(!AppUpdate::isTrustedAssetUrl(QStringLiteral(
-      "https://user@github.com/khentmoba/slickshot/releases/download/v1/a.exe")));
-    QVERIFY(!AppUpdate::isTrustedAssetUrl(QStringLiteral(
-      "https://github.com:8443/khentmoba/slickshot/releases/download/v1/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(
+      QStringLiteral("https://user@github.com/khentmoba/slickshot/releases/"
+                     "download/v1/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(
+      QStringLiteral("https://github.com:8443/khentmoba/slickshot/releases/"
+                     "download/v1/a.exe")));
     QVERIFY(AppUpdate::isTrustedReleasePageUrl(QStringLiteral(
       "https://github.com/khentmoba/slickshot/releases/tag/v1.0.0")));
     QVERIFY(!AppUpdate::isTrustedReleasePageUrl(
@@ -2028,8 +2031,8 @@ void SlickShotTests::testStrfparseEdgeCases()
     QCOMPARE(formatted[4], '-');
     QCOMPARE(formatted[7], '-');
 
-    const std::string longFmt = strfparse::format_time_string(
-      "%A_%B_%c_%Z_%x_%X_%Y_%m_%d_%H_%M_%S");
+    const std::string longFmt =
+      strfparse::format_time_string("%A_%B_%c_%Z_%x_%X_%Y_%m_%d_%H_%M_%S");
     QVERIFY(!longFmt.empty());
     QVERIFY(longFmt.find("%Y") == std::string::npos);
     QVERIFY(longFmt.find("%S") == std::string::npos);
@@ -2134,10 +2137,9 @@ void SlickShotTests::testSaveToFilesystemWithoutExtensionFallsBackToPng()
     const QString unknownExtPath =
       tempDir.filePath(QStringLiteral("shot.unknownext"));
     QVERIFY(saveToFilesystem(pixmap, unknownExtPath, QStringLiteral("")));
-    const QString actualPath =
-      QFileInfo::exists(unknownExtPath)
-        ? unknownExtPath
-        : unknownExtPath + QStringLiteral(".png");
+    const QString actualPath = QFileInfo::exists(unknownExtPath)
+                                 ? unknownExtPath
+                                 : unknownExtPath + QStringLiteral(".png");
     QVERIFY(QFileInfo::exists(actualPath));
     QImage loaded(actualPath);
     QCOMPARE(loaded.size(), QSize(16, 16));
@@ -2149,9 +2151,9 @@ void SlickShotTests::testValueHandlerExpectedMessageFormatting()
     QCOMPARE(bounded.expected(), QStringLiteral("number between 1 and 100"));
 
     UserColors colors(3, 17);
-    QCOMPARE(colors.expected(),
-             QStringLiteral(
-               "list of colors(min 2 and max 16) separated by comma"));
+    QCOMPARE(
+      colors.expected(),
+      QStringLiteral("list of colors(min 2 and max 16) separated by comma"));
 }
 
 #if defined(Q_OS_WIN)
