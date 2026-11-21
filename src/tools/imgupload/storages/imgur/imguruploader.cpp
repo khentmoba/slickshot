@@ -89,13 +89,24 @@ ImgurUploader::ImgurUploader(const QPixmap& capture, QWidget* parent)
 
 void ImgurUploader::handleReply(QNetworkReply* reply)
 {
+    reply->deleteLater();
     spinner()->deleteLater();
     m_currentImageName.clear();
     QJsonDocument response = QJsonDocument::fromJson(reply->readAll());
     QJsonObject json = response.object();
     if (reply->error() == QNetworkReply::NoError) {
         QJsonObject data = json[QStringLiteral("data")].toObject();
-        setImageURL(data[QStringLiteral("link")].toString());
+        const QUrl imageUrl(data[QStringLiteral("link")].toString());
+        if (!imageUrl.isValid() ||
+            (imageUrl.scheme().compare(QLatin1String("https"),
+                                       Qt::CaseInsensitive) != 0 &&
+             imageUrl.scheme().compare(QLatin1String("http"),
+                                       Qt::CaseInsensitive) != 0)) {
+            setInfoLabelText(tr("Invalid upload URL returned by server."));
+            new QShortcut(Qt::Key_Escape, this, SLOT(close()));
+            return;
+        }
+        setImageURL(imageUrl);
 
         const QString deleteToken =
           data[QStringLiteral("deletehash")].toString();

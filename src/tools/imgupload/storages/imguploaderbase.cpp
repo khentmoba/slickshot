@@ -164,7 +164,13 @@ void ImgUploaderBase::showPostUploadDialog()
 
 void ImgUploaderBase::openURL()
 {
-    bool successful = QDesktopServices::openUrl(m_imageURL);
+    const bool allowedScheme =
+      m_imageURL.isValid() &&
+      (m_imageURL.scheme().compare(QLatin1String("https"),
+                                   Qt::CaseInsensitive) == 0 ||
+       m_imageURL.scheme().compare(QLatin1String("http"),
+                                   Qt::CaseInsensitive) == 0);
+    bool successful = allowedScheme && QDesktopServices::openUrl(m_imageURL);
     if (!successful) {
         m_notification->showMessage(tr("Unable to open the URL."));
     }

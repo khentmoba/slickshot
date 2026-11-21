@@ -297,6 +297,10 @@ void FlameshotDaemon::getLatestAvailableVersion()
     // This features is required for MacOS and Windows user and for Linux users
     // who installed SlickShot not from the repository.
     QNetworkRequest requestCheckUpdates(QUrl(FLAMESHOT_APP_VERSION_URL));
+    requestCheckUpdates.setTransferTimeout(30000);
+    requestCheckUpdates.setAttribute(
+      QNetworkRequest::RedirectPolicyAttribute,
+      QNetworkRequest::UserVerifiedRedirectPolicy);
     if (nullptr == m_networkCheckUpdates) {
         m_networkCheckUpdates = new QNetworkAccessManager(this);
         connect(m_networkCheckUpdates,
@@ -304,7 +308,24 @@ void FlameshotDaemon::getLatestAvailableVersion()
                 this,
                 &FlameshotDaemon::handleReplyCheckUpdates);
     }
-    m_networkCheckUpdates->get(requestCheckUpdates);
+    QNetworkReply* reply = m_networkCheckUpdates->get(requestCheckUpdates);
+    connect(reply,
+            &QNetworkReply::redirected,
+            reply,
+            [reply](const QUrl& url) {
+                const QString host = url.host().toLower();
+                const bool trusted =
+                  url.isValid() &&
+                  url.scheme().compare(QLatin1String("https"),
+                                       Qt::CaseInsensitive) == 0 &&
+                  (host == QLatin1String("api.github.com") ||
+                   host == QLatin1String("github.com"));
+                if (trusted) {
+                    emit reply->redirectAllowed();
+                } else {
+                    reply->abort();
+                }
+            });
 
     // Re-check every 24 hours. Reuses one timer across manual checks.
     if (!m_updateCheckTimer) {
@@ -530,7 +551,14 @@ void FlameshotDaemon::handleReplyCheckUpdates(QNetworkReply* reply)
     }
 
     if (reply->error() == QNetworkReply::NoError) {
-        QJsonDocument response = QJsonDocument::fromJson(reply->readAll());
+        constexpr qint64 kMaxReleaseJsonBytes = 1024 * 1024;
+        const QByteArray payload = reply->read(kMaxReleaseJsonBytes + 1);
+        if (payload.size() > kMaxReleaseJsonBytes) {
+            qWarning() << "Update check response exceeded size limit.";
+            m_showManualCheckAppUpdateStatus = false;
+            return;
+        }
+        QJsonDocument response = QJsonDocument::fromJson(payload);
         QJsonObject json = response.object();
         const AppUpdateInfo release = AppUpdate::releaseInfo(json);
         m_appLatestVersion = release.version;

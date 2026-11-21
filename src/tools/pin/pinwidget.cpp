@@ -110,9 +110,19 @@ bool PinWidget::scrollEvent(QWheelEvent* event)
         if (angle.y() == 0) {
             return true;
         }
-        m_currentStepScaleFactor = angle.y() > 0
-                                     ? m_currentStepScaleFactor + STEP
-                                     : m_currentStepScaleFactor - STEP;
+        const qreal nextStep = angle.y() > 0 ? m_currentStepScaleFactor + STEP
+                                             : m_currentStepScaleFactor - STEP;
+        const qreal iw = qMax<qreal>(1.0, m_pixmap.width());
+        const qreal ih = qMax<qreal>(1.0, m_pixmap.height());
+        const qreal baseScale = qMax<qreal>(0.001, m_scaleFactor);
+        const qreal minScale =
+          qMin(MIN_SIZE / iw, MIN_SIZE / ih) / baseScale;
+        const qreal maxScale =
+          qMax(static_cast<qreal>(maximumWidth()) / iw,
+               static_cast<qreal>(maximumHeight()) / ih) /
+          baseScale;
+        m_currentStepScaleFactor =
+          qBound(qMin(minScale, maxScale), nextStep, qMax(minScale, maxScale));
         m_expanding = m_currentStepScaleFactor >= 1.0;
     }
 #if defined(Q_OS_MACOS)

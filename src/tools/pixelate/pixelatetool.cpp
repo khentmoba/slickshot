@@ -126,11 +126,11 @@ QImage PixelateTool::computeEffect(const QPixmap& pixmap,
                                    qreal pixelRatio,
                                    bool useInsecurePixelate) const
 {
-    const auto width =
-      static_cast<int>(selection.width() * (0.5 / qMax(1, size() + 1)));
-    const auto height =
-      static_cast<int>(selection.height() * (0.5 / qMax(1, size() + 1)));
-    const auto effectSize = QSize(qMax(width, 1), qMax(height, 1));
+    const int width = qMax(
+      1, static_cast<int>(selection.width() * (0.5 / qMax(1, size() + 1))));
+    const int height = qMax(
+      1, static_cast<int>(selection.height() * (0.5 / qMax(1, size() + 1))));
+    const QSize effectSize(width, height);
 
     if (useInsecurePixelate) {
         if (size() <= 1) {
@@ -223,6 +223,7 @@ QImage PixelateTool::computeEffect(const QPixmap& pixmap,
     // Image where the pseudo-pixelation is calculated.
     // This will later be scaled to cover the selected area.
     QImage pixelated = QImage(effectSize, QImage::Format_RGB32);
+    pixelated.fill(Qt::black);
     QRgb* const outBits = reinterpret_cast<QRgb*>(pixelated.bits());
     const qsizetype outStride =
       pixelated.bytesPerLine() / static_cast<qsizetype>(sizeof(QRgb));

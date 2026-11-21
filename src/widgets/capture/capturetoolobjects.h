@@ -12,6 +12,7 @@ class CaptureToolObjects : public QObject
 {
 public:
     explicit CaptureToolObjects(QObject* parent = nullptr);
+    ~CaptureToolObjects() override;
     QList<QPointer<CaptureTool>> captureToolObjects();
     void append(const QPointer<CaptureTool>& captureTool);
     void insert(int index, const QPointer<CaptureTool>& captureTool);

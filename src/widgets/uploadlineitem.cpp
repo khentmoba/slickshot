@@ -39,7 +39,14 @@ UploadLineItem::UploadLineItem(QWidget* parent,
     });
 
     connect(ui->openBrowser, &QPushButton::clicked, this, [=, this]() {
-        QDesktopServices::openUrl(QUrl(url));
+        const QUrl parsed(url);
+        if (parsed.isValid() &&
+            (parsed.scheme().compare(QLatin1String("https"),
+                                     Qt::CaseInsensitive) == 0 ||
+             parsed.scheme().compare(QLatin1String("http"),
+                                     Qt::CaseInsensitive) == 0)) {
+            QDesktopServices::openUrl(parsed);
+        }
     });
 
     connect(ui->deleteImage, &QPushButton::clicked, this, [=, this]() {
@@ -56,7 +63,11 @@ UploadLineItem::UploadLineItem(QWidget* parent,
 
         ImgUploaderBase* imgUploaderBase =
           ImgUploaderManager(this).uploader(unpackFileName.type);
-        imgUploaderBase->deleteImage(unpackFileName.file, unpackFileName.token);
+        if (imgUploaderBase != nullptr) {
+            imgUploaderBase->deleteImage(unpackFileName.file,
+                                         unpackFileName.token);
+            imgUploaderBase->deleteLater();
+        }
 
         removeCacheFile(fullFileName);
         emit requestedDeletion();

@@ -54,7 +54,7 @@ public:
 
     static bool supportsDevicePixelRatio(qreal dpr, qreal scale)
     {
-        return qFuzzyCompare(dpr, scale) && qFuzzyCompare(dpr, qRound(dpr));
+        return dpr > 0.0 && qFuzzyCompare(dpr, scale);
     }
 
 private:

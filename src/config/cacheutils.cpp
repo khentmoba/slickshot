@@ -6,8 +6,13 @@
 #include <QDir>
 #include <QFile>
 #include <QRect>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QString>
+
+namespace {
+constexpr QDataStream::Version kRegionStreamVersion = QDataStream::Qt_6_0;
+}
 
 QString getCachePath()
 {
@@ -23,11 +28,16 @@ void setLastRegion(QRect const& newRegion)
 {
     auto cachePath = getCachePath() + "/region.txt";
 
-    QFile file(cachePath);
+    QSaveFile file(cachePath);
     if (file.open(QIODevice::WriteOnly)) {
         QDataStream out(&file);
+        out.setVersion(kRegionStreamVersion);
         out << newRegion;
-        file.close();
+        if (out.status() == QDataStream::Ok) {
+            file.commit();
+        } else {
+            file.cancelWriting();
+        }
     }
 }
 
@@ -39,8 +49,12 @@ QRect getLastRegion()
     QRect lastRegion;
     if (file.open(QIODevice::ReadOnly)) {
         QDataStream input(&file);
+        input.setVersion(kRegionStreamVersion);
         input >> lastRegion;
         file.close();
+        if (input.status() != QDataStream::Ok || !lastRegion.isValid()) {
+            lastRegion = QRect();
+        }
     } else {
         lastRegion = QRect(0, 0, 0, 0);
     }

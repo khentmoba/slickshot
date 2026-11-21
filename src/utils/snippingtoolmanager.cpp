@@ -147,10 +147,14 @@ bool getRegString(HKEY root,
     const wchar_t* valName = valueName.empty() ? nullptr : valueName.c_str();
     wchar_t buffer[1024] = { 0 };
     DWORD size = sizeof(buffer);
-    DWORD type = 0;
-    status = RegQueryValueExW(
-      hKey, valName, nullptr, &type, reinterpret_cast<BYTE*>(buffer), &size);
-    if (status == ERROR_SUCCESS && (type == REG_SZ || type == REG_EXPAND_SZ)) {
+    status = RegGetValueW(hKey,
+                          nullptr,
+                          valName,
+                          RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND,
+                          nullptr,
+                          buffer,
+                          &size);
+    if (status == ERROR_SUCCESS) {
         out = buffer;
         return true;
     }

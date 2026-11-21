@@ -7,6 +7,7 @@
 #include "utils/confighandler.h"
 #include "utils/filenamehandler.h"
 #include "utils/globalvalues.h"
+#include "utils/launcherutils.h"
 
 #include <QCheckBox>
 #include <QDateTime>
@@ -225,6 +226,10 @@ void AppLauncherWidget::launch(const QModelIndex& index)
         // we really should append the file name if there
         prog_args.append(tempFilePath); // were no replacements
     }
+    if (prog_args.isEmpty() || prog_args.at(0).trimmed().isEmpty()) {
+        removeTempFile();
+        return;
+    }
     QString app_name = prog_args.at(0);
     bool inTerminal =
       index.data(Qt::UserRole + 1).toBool() || m_terminalCheckbox->isChecked();
@@ -236,8 +241,8 @@ void AppLauncherWidget::launch(const QModelIndex& index)
               this, tr("Error"), tr("Unable to launch in terminal."));
         }
     } else {
-        QFileInfo fi(tempFilePath);
-        QString workingDir = fi.absolutePath();
+        const QString workingDir =
+          launcherutils::safeWorkingDirectory(app_name);
         prog_args.removeAt(0); // strip program name out
         launched = QProcess::startDetached(app_name, prog_args, workingDir);
         if (!launched) {

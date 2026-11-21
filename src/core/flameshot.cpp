@@ -262,8 +262,11 @@ CaptureWidget* Flameshot::gui(const CaptureRequest& req)
             if (nullptr == modalWidget) {
                 break;
             }
-            modalWidget->close();
-            modalWidget->deleteLater();
+            if (auto* dialog = qobject_cast<QDialog*>(modalWidget)) {
+                dialog->reject();
+            } else {
+                modalWidget->close();
+            }
             QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents,
                                             20);
         }
@@ -276,6 +279,12 @@ CaptureWidget* Flameshot::gui(const CaptureRequest& req)
 
         m_captureWindow = new CaptureWidget(request);
         m_guiOpening = false;
+        if (!m_captureWindow->isCaptureValid()) {
+            delete m_captureWindow;
+            m_captureWindow = nullptr;
+            emit captureFailed();
+            return nullptr;
+        }
 
 #ifdef Q_OS_WIN
         m_captureWindow->show();

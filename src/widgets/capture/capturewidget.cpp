@@ -145,7 +145,9 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
           grabber.grabEntireDesktop(ok, preSelectedMonitor);
         if (!ok) {
             // Error already logged in ScreenGrabber
+            m_captureFailed = true;
             this->close();
+            return;
         }
         m_context.origScreenshot = m_context.screenshot;
 
@@ -174,12 +176,11 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
             }
             move(topLeft);
         }
-        // On Windows, account for DPR when sizing the window
-        QSize windowSize = pixmap().size();
-        if (pixmap().devicePixelRatio() > 1.0) {
-            windowSize = QSize(pixmap().width() / pixmap().devicePixelRatio(),
-                               pixmap().height() / pixmap().devicePixelRatio());
-        }
+        // On Windows, account for DPR when sizing the window without truncating
+        // fractional logical dimensions on 125%/150%/175% displays.
+        QSize windowSize = selectedScreen
+                             ? selectedScreen->geometry().size()
+                             : pixmap().deviceIndependentSize().toSize();
         resize(windowSize);
 
         if (selectedScreen != nullptr && windowHandle()) {
@@ -2124,13 +2125,37 @@ void CaptureWidget::drawGridDots(QPainter& painter,
                                  int gridSize,
                                  const QColor& color)
 {
+    if (scale <= 0.0 || gridSize <= 0 || limit.x() <= 0.0 || limit.y() <= 0.0) {
+        return;
+    }
     painter.setPen(color);
     painter.setBrush(QBrush(color));
-    const auto step{ gridSize / scale };
-    const auto radius{ 1 * scale };
-    for (int y = 0; y < limit.y(); y += step) {
-        for (int x = 0; x < limit.x(); x += step) {
-            painter.drawEllipse(x, y, radius, radius);
+    const qreal step = gridSize / scale;
+    const qreal radius = 1.0 * scale;
+
+    int startIx = 0;
+    int startIy = 0;
+    qreal maxX = limit.x();
+    qreal maxY = limit.y();
+    if (painter.hasClipping()) {
+        const QRectF clip = painter.clipBoundingRect();
+        startIx = qMax(0, static_cast<int>(std::floor((clip.left() - radius) / step)));
+        startIy = qMax(0, static_cast<int>(std::floor((clip.top() - radius) / step)));
+        maxX = qMin(maxX, clip.right() + radius);
+        maxY = qMin(maxY, clip.bottom() + radius);
+    }
+
+    for (int iy = startIy;; ++iy) {
+        const qreal y = iy * step;
+        if (y >= maxY) {
+            break;
+        }
+        for (int ix = startIx;; ++ix) {
+            const qreal x = ix * step;
+            if (x >= maxX) {
+                break;
+            }
+            painter.drawEllipse(QRectF(x, y, radius, radius));
         }
     }
 }
