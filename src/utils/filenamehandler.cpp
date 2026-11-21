@@ -12,6 +12,7 @@
 #endif
 #include <exception>
 #include <locale>
+#include <mutex>
 
 #if defined(Q_OS_WIN)
 namespace {
@@ -49,15 +50,17 @@ const QChar PATTERN_DIR_SEPARATOR(0x1F);
 FileNameHandler::FileNameHandler(QObject* parent)
   : QObject(parent)
 {
-    auto err = AbstractLogger::error(AbstractLogger::Stderr);
-    try {
-        std::locale::global(std::locale());
-    } catch (std::exception&) {
-        err << "Locales on your system are not properly configured. Falling "
-               "back to defaults";
-
-        std::locale::global(std::locale("en_US.UTF-8"));
-    }
+    static std::once_flag localeInitOnce;
+    std::call_once(localeInitOnce, []() {
+        try {
+            std::locale::global(std::locale());
+        } catch (const std::exception&) {
+            AbstractLogger::error(AbstractLogger::Stderr)
+              << "Locales on your system are not properly configured. Falling "
+                 "back to defaults";
+            std::locale::global(std::locale::classic());
+        }
+    });
 }
 
 QString FileNameHandler::parsedPattern()

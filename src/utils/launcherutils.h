@@ -33,45 +33,49 @@ inline QStringList commandArguments(const QString& command,
     QStringList arguments;
     bool substituted = false;
 
-    if (placeholderPos >= 0) {
-        const QString prefix = trimmed.left(placeholderPos).trimmed();
-
-        if (prefix.startsWith(QLatin1Char('"'))) {
-            const int closingQuote = prefix.indexOf(QLatin1Char('"'), 1);
+    auto splitPrefix = [](const QString& text,
+                          QString& outProgram,
+                          QStringList& outArgs) {
+        if (text.startsWith(QLatin1Char('"'))) {
+            const int closingQuote = text.indexOf(QLatin1Char('"'), 1);
             if (closingQuote > 0) {
-                program = prefix.mid(1, closingQuote - 1);
-                arguments = QProcess::splitCommand(
-                  prefix.mid(closingQuote + 1).trimmed());
+                outProgram = text.mid(1, closingQuote - 1);
+                outArgs =
+                  QProcess::splitCommand(text.mid(closingQuote + 1).trimmed());
             } else {
-                program = prefix.mid(1);
+                outProgram = text.mid(1);
             }
-        } else if (prefix.contains(QLatin1Char('/')) ||
-                   prefix.contains(QLatin1Char('\\'))) {
+        } else if (text.contains(QLatin1Char('/')) ||
+                   text.contains(QLatin1Char('\\'))) {
             // A Windows path may contain spaces. Split off the first flag so
             // it is not swallowed into the program name.
             int splitAt = -1;
-            for (int i = 1; i < prefix.size() - 1; ++i) {
-                if (prefix.at(i) == QLatin1Char(' ') &&
-                    (prefix.at(i + 1) == QLatin1Char('-') ||
-                     prefix.at(i + 1) == QLatin1Char('/'))) {
+            for (int i = 1; i < text.size() - 1; ++i) {
+                if (text.at(i) == QLatin1Char(' ') &&
+                    (text.at(i + 1) == QLatin1Char('-') ||
+                     text.at(i + 1) == QLatin1Char('/'))) {
                     splitAt = i;
                     break;
                 }
             }
             if (splitAt > 0) {
-                program = prefix.left(splitAt);
-                arguments =
-                  QProcess::splitCommand(prefix.mid(splitAt).trimmed());
+                outProgram = text.left(splitAt);
+                outArgs = QProcess::splitCommand(text.mid(splitAt).trimmed());
             } else {
-                program = prefix;
+                outProgram = text;
             }
         } else {
-            const QStringList parts = QProcess::splitCommand(prefix);
+            const QStringList parts = QProcess::splitCommand(text);
             if (!parts.isEmpty()) {
-                program = parts.first();
-                arguments = parts.mid(1);
+                outProgram = parts.first();
+                outArgs = parts.mid(1);
             }
         }
+    };
+
+    if (placeholderPos >= 0) {
+        const QString prefix = trimmed.left(placeholderPos).trimmed();
+        splitPrefix(prefix, program, arguments);
 
         arguments.append(QProcess::splitCommand(trimmed.mid(placeholderPos)));
         static const QRegularExpression placeholder(QStringLiteral("%1?"));
@@ -82,7 +86,7 @@ inline QStringList commandArguments(const QString& command,
         }
     } else {
 #if defined(Q_OS_WIN)
-        program = trimmed;
+        splitPrefix(trimmed, program, arguments);
 #else
         const QStringList parts = QProcess::splitCommand(trimmed);
         if (parts.isEmpty()) {

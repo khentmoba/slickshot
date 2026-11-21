@@ -85,6 +85,7 @@ void raiseAboveMenuBar(QWidget* widget)
 #include <QDesktopServices>
 #include <QEventLoop>
 #include <QFile>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QScreen>
 #include <QThread>
@@ -537,7 +538,7 @@ void Flameshot::showDockIcon(QWidget* w)
 void Flameshot::openSavePath()
 {
     QString savePath = ConfigHandler().savePath();
-    if (!savePath.isEmpty()) {
+    if (!savePath.isEmpty() && QFileInfo(savePath).isDir()) {
         QDesktopServices::openUrl(QUrl::fromLocalFile(savePath));
     }
 }
@@ -672,8 +673,8 @@ void Flameshot::exportCapture(const QPixmap& capture,
 #ifdef ENABLE_IMGUR
     if (tasks & CR::UPLOAD) {
         if (!ConfigHandler().uploadWithoutConfirmation()) {
-            auto* dialog = new ImgUploadDialog();
-            if (dialog->exec() == QDialog::Rejected) {
+            ImgUploadDialog dialog;
+            if (dialog.exec() == QDialog::Rejected) {
                 return;
             }
         }

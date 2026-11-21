@@ -106,5 +106,8 @@ Section "un.Uninstall"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "SlickShot"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Flameshot"
 
-  RMDir /r "$INSTDIR"
+  RMDir /r "$INSTDIR\bin"
+  RMDir /r "$INSTDIR\share"
+  Delete "$INSTDIR\uninstall.exe"
+  RMDir "$INSTDIR"
 SectionEnd

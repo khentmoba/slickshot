@@ -284,6 +284,7 @@ private:
     // mouse moves while that layer stays the same
     QPixmap m_dragBase;
     int m_dragBaseLayer{ -1 };
+    QRect m_dragDirtyRect;
 
     // Area the magnifier was last drawn in, so its old position is cleared
     QRect m_magnifierArea;

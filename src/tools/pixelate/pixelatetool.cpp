@@ -98,13 +98,23 @@ void PixelateTool::process(QPainter& painter, const QPixmap& pixmap)
 {
     const bool useInsecurePixelate = m_insecurePixelate;
 
-    QRect selection = boundingRect().intersected(pixmap.rect());
+    const qreal pixelRatio = pixmap.devicePixelRatio();
+    if (pixelRatio <= 0.0 || pixmap.isNull()) {
+        return;
+    }
+    const QRect logicalBounds(
+      QPoint(0, 0), (QSizeF(pixmap.size()) / pixelRatio).toSize());
+    QRect selection = boundingRect().intersected(logicalBounds);
     if (selection.isEmpty()) {
         return;
     }
-    const auto pixelRatio = pixmap.devicePixelRatio();
-    const QRect selectionScaled = QRect(selection.topLeft() * pixelRatio,
-                                        selection.bottomRight() * pixelRatio);
+    const QRect selectionScaled =
+      QRect(selection.topLeft() * pixelRatio,
+            selection.bottomRight() * pixelRatio)
+        .intersected(pixmap.rect());
+    if (selectionScaled.isEmpty()) {
+        return;
+    }
 
     // The effect is deterministic for these inputs. Reuse the cached image
     // across paints (and mouse-move driven repaints) until one of them changes.
@@ -237,6 +247,12 @@ QImage PixelateTool::computeEffect(const QPixmap& pixmap,
         fringeStride[i] = fringe[i].bytesPerLine();
         fringeW[i] = fringe[i].width();
         fringeH[i] = fringe[i].height();
+        if (fringeBits[i] == nullptr || fringeW[i] <= 0 || fringeH[i] <= 0) {
+            return pixelated.scaled(selection.width(),
+                                    selection.height(),
+                                    Qt::IgnoreAspectRatio,
+                                    Qt::FastTransformation);
+        }
     }
 
     constexpr float inv255 = 1.0f / 255.0f;

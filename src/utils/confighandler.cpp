@@ -290,6 +290,7 @@ ConfigHandler::ConfigHandler()
     if (firstInitialization) {
         // check for error every time the file changes
         m_configWatcher.reset(new QFileSystemWatcher());
+        qAddPostRoutine([]() { ConfigHandler::m_configWatcher.reset(); });
         ensureFileWatched();
         QObject::connect(m_configWatcher.data(),
                          &QFileSystemWatcher::fileChanged,
@@ -642,10 +643,15 @@ QString ConfigHandler::shortcut(const QString& actionName)
 void ConfigHandler::setValue(const QString& key, const QVariant& value)
 {
     assertKeyRecognized(key);
+    auto handler = valueHandler(key);
+    if (!handler) {
+        setErrorState(true);
+        return;
+    }
     if (!hasError()) {
         // don't let the file watcher initiate another error check
         m_skipNextErrorCheck = true;
-        auto val = valueHandler(key)->representation(value);
+        auto val = handler->representation(value);
         m_settings.setValue(key, val);
     }
 }
@@ -657,6 +663,10 @@ QVariant ConfigHandler::value(const QString& key) const
     auto val = m_settings.value(key);
 
     auto handler = valueHandler(key);
+    if (!handler) {
+        setErrorState(true);
+        return {};
+    }
 
     // Check the value for semantic errors
     if (val.isValid() && !handler->check(val)) {
@@ -676,7 +686,12 @@ void ConfigHandler::remove(const QString& key)
 
 void ConfigHandler::resetValue(const QString& key)
 {
-    m_settings.setValue(key, valueHandler(key)->fallback());
+    auto handler = valueHandler(key);
+    if (!handler) {
+        setErrorState(true);
+        return;
+    }
+    m_settings.setValue(key, handler->fallback());
 }
 
 QSet<QString>& ConfigHandler::recognizedGeneralOptions()

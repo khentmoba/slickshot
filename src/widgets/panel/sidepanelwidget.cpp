@@ -173,8 +173,18 @@ void SidePanelWidget::onToolSizeChanged(int t)
     m_toolSizeSpin->setValue(m_toolSize);
 }
 
+SidePanelWidget::~SidePanelWidget()
+{
+    if (m_colorGrabber) {
+        m_colorGrabber->close();
+    }
+}
+
 void SidePanelWidget::startColorGrab()
 {
+    if (m_colorGrabber) {
+        m_colorGrabber->close();
+    }
     m_revertColor = m_color;
     m_colorGrabber = new ColorGrabWidget(m_pixmap);
     connect(m_colorGrabber,

@@ -61,6 +61,16 @@ int CaptureToolObjects::size() const
     return static_cast<int>(m_captureToolObjects.size());
 }
 
+bool CaptureToolObjects::move(int from, int to)
+{
+    if (from < 0 || from >= m_captureToolObjects.size() || to < 0 ||
+        to >= m_captureToolObjects.size() || from == to) {
+        return false;
+    }
+    m_captureToolObjects.move(from, to);
+    return true;
+}
+
 void CaptureToolObjects::removeAt(int index)
 {
     if (index >= 0 && index < m_captureToolObjects.size()) {
@@ -108,6 +118,17 @@ int CaptureToolObjects::findWithRadius(const QPoint& pos,
             // Text has spaces inside to need to take a bigger currentRadius for
             // text objects search
             currentRadius += SEARCH_RADIUS_TEXT_HANDICAP;
+        }
+
+        const QRect bounds = toolItem->boundingRect();
+        if (bounds.isValid() &&
+            !bounds
+               .adjusted(-currentRadius,
+                         -currentRadius,
+                         currentRadius,
+                         currentRadius)
+               .contains(pos)) {
+            continue;
         }
 
         // Only the square around the click matters. Clip it to the canvas so

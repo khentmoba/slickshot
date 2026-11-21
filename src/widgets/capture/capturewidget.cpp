@@ -602,12 +602,17 @@ void CaptureWidget::initQuitPrompt()
     m_quitPrompt->show();
     QRect position = m_quitPrompt->frameGeometry();
     QScreen* currentScreen = QGuiAppCurrentScreen().currentScreen();
-    // The prompt is a child of the capture widget, so move() takes
-    // coordinates relative to it. The screen geometry is global, which only
-    // matches when the capture widget starts at the global origin.
-    position.moveCenter(
-      mapFromGlobal(currentScreen->availableGeometry().center()));
-    m_quitPrompt->move(position.topLeft());
+    if (currentScreen == nullptr) {
+        currentScreen = QGuiApplication::primaryScreen();
+    }
+    if (currentScreen != nullptr) {
+        // The prompt is a child of the capture widget, so move() takes
+        // coordinates relative to it. The screen geometry is global, which only
+        // matches when the capture widget starts at the global origin.
+        position.moveCenter(
+          mapFromGlobal(currentScreen->availableGeometry().center()));
+        m_quitPrompt->move(position.topLeft());
+    }
     m_quitPrompt->hide();
 
     QObject::connect(check, &QCheckBox::clicked, [](bool checked) {
@@ -1049,6 +1054,10 @@ void CaptureWidget::mouseMoveEvent(QMouseEvent* e)
         if (m_startMove) {
             QPointer<CaptureTool> activeTool =
               m_captureToolObjects.at(m_panel->activeLayerIndex());
+            if (activeTool.isNull() || activeTool->pos() == nullptr) {
+                m_startMove = false;
+                return;
+            }
             if (m_activeToolOffsetToMouseOnStart.isNull()) {
                 setCursor(Qt::ClosedHandCursor);
                 m_activeToolOffsetToMouseOnStart =
@@ -1584,6 +1593,9 @@ void CaptureWidget::handleToolSignal(CaptureTool::Request r)
                 break;
             } else {
                 QWidget* w = m_activeTool->widget();
+                if (w == nullptr) {
+                    break;
+                }
                 w->setAttribute(Qt::WA_DeleteOnClose);
                 w->activateWindow();
                 w->show();
@@ -1717,10 +1729,12 @@ void CaptureWidget::onMoveCaptureToolUp(int captureToolIndex)
 {
     invalidateDragBase();
     m_captureToolObjectsBackup = m_captureToolObjects;
+    if (!m_captureToolObjects.move(captureToolIndex, captureToolIndex - 1)) {
+        m_captureToolObjectsBackup.clear();
+        return;
+    }
     pushObjectsStateToUndoStack();
-    auto tool = m_captureToolObjects.at(captureToolIndex);
-    m_captureToolObjects.removeAt(captureToolIndex);
-    m_captureToolObjects.insert(captureToolIndex - 1, tool);
+    drawToolsData();
     updateLayersPanel();
 }
 
@@ -1728,10 +1742,12 @@ void CaptureWidget::onMoveCaptureToolDown(int captureToolIndex)
 {
     invalidateDragBase();
     m_captureToolObjectsBackup = m_captureToolObjects;
+    if (!m_captureToolObjects.move(captureToolIndex, captureToolIndex + 1)) {
+        m_captureToolObjectsBackup.clear();
+        return;
+    }
     pushObjectsStateToUndoStack();
-    auto tool = m_captureToolObjects.at(captureToolIndex);
-    m_captureToolObjects.removeAt(captureToolIndex);
-    m_captureToolObjects.insert(captureToolIndex + 1, tool);
+    drawToolsData();
     updateLayersPanel();
 }
 
@@ -2050,6 +2066,7 @@ void CaptureWidget::invalidateDragBase()
 {
     m_dragBase = QPixmap();
     m_dragBaseLayer = -1;
+    m_dragDirtyRect = QRect();
 }
 
 void CaptureWidget::invalidateToolObjectsRegion()
@@ -2068,20 +2085,40 @@ void CaptureWidget::invalidateToolObjectsRegion()
 void CaptureWidget::redrawFromLayer(int layer)
 {
     const int count = m_captureToolObjects.size();
+    QRect currentBounds;
+    for (int index = layer; index < count; ++index) {
+        const QPointer<CaptureTool> tool = m_captureToolObjects.at(index);
+        if (!tool.isNull()) {
+            currentBounds |= paddedUpdateRect(tool->boundingRect());
+        }
+    }
+
     if (m_dragBase.isNull() || m_dragBaseLayer != layer) {
         // Objects below the dragged layer stay put while it moves, so compose
-        // them once and reuse that result for the following moves
+        // them once and detach m_context.screenshot once to avoid a full-screen
+        // copy on every mouse move.
         m_dragBase = m_context.origScreenshot;
         m_captureToolObjects.composeRange(m_dragBase, 0, layer);
         m_dragBaseLayer = layer;
+        m_context.screenshot = m_dragBase.copy();
+        m_dragDirtyRect = QRect();
+    } else {
+        const QRect restoreRect = (m_dragDirtyRect | currentBounds)
+                                    .intersected(rect());
+        if (!restoreRect.isEmpty()) {
+            QPainter restorePainter(&m_context.screenshot);
+            restorePainter.setClipRect(restoreRect);
+            restorePainter.drawPixmap(0, 0, m_dragBase);
+        }
     }
-    m_context.screenshot = m_dragBase;
+
     m_captureToolObjects.composeRange(m_context.screenshot, layer, count);
     // The moved object and the ones drawn over it can change, so refresh them
-    for (int index = layer; index < count; ++index) {
-        update(
-          paddedUpdateRect(m_captureToolObjects.at(index)->boundingRect()));
+    const QRect repaintRect = m_dragDirtyRect | currentBounds;
+    if (!repaintRect.isEmpty()) {
+        update(repaintRect);
     }
+    m_dragDirtyRect = currentBounds;
     drawObjectSelection();
 }
 

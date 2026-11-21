@@ -141,6 +141,9 @@ private slots:
     void testStrfparseEdgeCases();
     void testCaptureToolObjectsAssignmentOwnership();
     void testCacheUtilsLastRegionRoundTripAndCorruption();
+    void testPixelateToolHiDpiOffEdgeNoCrash();
+    void testCaptureToolObjectsMovePreservesObjects();
+    void testSaveToFilesystemWithoutExtensionFallsBackToPng();
 #if defined(Q_OS_WIN)
     void testWindowsHdrConvertScRgbToSdr();
     void testQtRuntimeDeployedForStandaloneLaunch();
@@ -1085,6 +1088,14 @@ void SlickShotTests::testOpenWithCommandArguments()
              QStringLiteral("C:\\Program Files\\App\\app.exe"));
     QCOMPARE(quotedFlagged.at(1), QStringLiteral("--flag"));
     QCOMPARE(quotedFlagged.at(2), path);
+
+    const QStringList quotedNoPlaceholder = launcherutils::commandArguments(
+      QStringLiteral("\"C:\\Program Files\\App\\app.exe\" --flag"), path);
+    QCOMPARE(quotedNoPlaceholder.size(), 3);
+    QCOMPARE(quotedNoPlaceholder.at(0),
+             QStringLiteral("C:\\Program Files\\App\\app.exe"));
+    QCOMPARE(quotedNoPlaceholder.at(1), QStringLiteral("--flag"));
+    QCOMPARE(quotedNoPlaceholder.at(2), path);
 }
 
 void SlickShotTests::testEffectiveDesktopPixelRatio()
@@ -2034,6 +2045,77 @@ void SlickShotTests::testCacheUtilsLastRegionRoundTripAndCorruption()
     corrupt.write("xx", 2);
     corrupt.close();
     QVERIFY(!getLastRegion().isValid());
+}
+
+void SlickShotTests::testPixelateToolHiDpiOffEdgeNoCrash()
+{
+    QPixmap pixmap(80, 80);
+    pixmap.setDevicePixelRatio(2.0); // 40x40 logical
+    pixmap.fill(QColor(0x33, 0x55, 0x77));
+
+    CaptureContext ctx;
+    ctx.mousePos = QPoint(35, 35);
+    ctx.toolSize = 3;
+    ctx.color = Qt::red;
+
+    PixelateTool tool;
+    tool.drawStart(ctx);
+    // Drag past the logical 40x40 edge (but inside physical 80x80).
+    tool.drawMove(QPoint(65, 65));
+
+    QImage out(pixmap.size(), QImage::Format_ARGB32);
+    out.setDevicePixelRatio(2.0);
+    out.fill(Qt::black);
+    {
+        QPainter p(&out);
+        tool.process(p, pixmap);
+    }
+    QVERIFY(!out.isNull());
+}
+
+void SlickShotTests::testCaptureToolObjectsMovePreservesObjects()
+{
+    QObject owner;
+    CaptureToolObjects objects(&owner);
+    auto* first = new RectangleTool(&owner);
+    auto* second = new ArrowTool(&owner);
+    objects.append(first);
+    objects.append(second);
+
+    const QPointer<CaptureTool> copied0 = objects.at(0);
+    const QPointer<CaptureTool> copied1 = objects.at(1);
+    QVERIFY(!copied0.isNull());
+    QVERIFY(!copied1.isNull());
+
+    QVERIFY(objects.move(0, 1));
+    QCOMPARE(objects.size(), 2);
+    QCOMPARE(objects.at(0), copied1);
+    QCOMPARE(objects.at(1), copied0);
+    QVERIFY(!copied0.isNull());
+    QVERIFY(!copied1.isNull());
+
+    QVERIFY(!objects.move(-1, 0));
+    QVERIFY(!objects.move(0, 2));
+    QVERIFY(!objects.move(1, 1));
+}
+
+void SlickShotTests::testSaveToFilesystemWithoutExtensionFallsBackToPng()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    QPixmap pixmap(16, 16);
+    pixmap.fill(Qt::blue);
+
+    const QString unknownExtPath =
+      tempDir.filePath(QStringLiteral("shot.unknownext"));
+    QVERIFY(saveToFilesystem(pixmap, unknownExtPath, QStringLiteral("")));
+    const QString actualPath =
+      QFileInfo::exists(unknownExtPath)
+        ? unknownExtPath
+        : unknownExtPath + QStringLiteral(".png");
+    QVERIFY(QFileInfo::exists(actualPath));
+    QImage loaded(actualPath);
+    QCOMPARE(loaded.size(), QSize(16, 16));
 }
 
 #if defined(Q_OS_WIN)

@@ -10,6 +10,7 @@ class ColorGrabWidget : public QWidget
     Q_OBJECT
 public:
     ColorGrabWidget(QPixmap* p, QWidget* parent = nullptr);
+    ~ColorGrabWidget() override;
 
     void startGrabbing();
 
@@ -35,11 +36,12 @@ private:
     void updateWidget();
     void finalize();
 
-    QPixmap* m_pixmap;
+    QPixmap m_pixmap;
     QImage m_previewImage;
     QColor m_color;
 
     bool m_mousePressReceived;
     bool m_extraZoomActive;
     bool m_magnifierActive;
+    bool m_grabActive{ false };
 };

@@ -42,9 +42,14 @@ void showOpenWithMenu(const QPixmap& capture)
                              QDir::toNativeSeparators(openWithDir));
         return;
     }
+    QString baseName = QFileInfo(FileNameHandler().parsedPattern()).fileName();
+    if (baseName.isEmpty() || baseName == QLatin1String(".") ||
+        baseName == QLatin1String("..")) {
+        baseName = QStringLiteral("screenshot");
+    }
     const QString tempFile =
-      FileNameHandler().properScreenshotPath(openWithDir, "png");
-    bool ok = capture.save(tempFile);
+      QDir(openWithDir).filePath(baseName + QStringLiteral(".png"));
+    bool ok = capture.save(tempFile, "PNG");
     if (!ok) {
         QMessageBox::about(nullptr,
                            QObject::tr("Error"),
