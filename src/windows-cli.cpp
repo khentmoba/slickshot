@@ -15,8 +15,7 @@ static void writeAll(HANDLE handle, const char* data, DWORD size)
     DWORD offset = 0;
     while (offset < size) {
         DWORD written = 0;
-        if (!WriteFile(
-              handle, data + offset, size - offset, &written, NULL) ||
+        if (!WriteFile(handle, data + offset, size - offset, &written, NULL) ||
             written == 0) {
             break;
         }

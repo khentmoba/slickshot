@@ -139,9 +139,8 @@ inline int cleanupStaleOpenWithFiles(const QString& dirPath,
     const QDateTime cutoff =
       QDateTime::currentDateTimeUtc().addSecs(-maxAgeSeconds);
     int removed = 0;
-    const QFileInfoList entries =
-      dir.entryInfoList(QStringList{ QStringLiteral("*.png") },
-                        QDir::Files | QDir::NoSymLinks);
+    const QFileInfoList entries = dir.entryInfoList(
+      QStringList{ QStringLiteral("*.png") }, QDir::Files | QDir::NoSymLinks);
     for (const QFileInfo& entry : entries) {
         if (entry.lastModified().toUTC() <= cutoff) {
             if (QFile::remove(entry.absoluteFilePath())) {

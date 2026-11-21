@@ -76,8 +76,7 @@ void showOpenWithMenu(const QPixmap& capture)
     }
 
     OPENASINFO info{};
-    const auto wStringFile =
-      QDir::toNativeSeparators(tempFile).toStdWString();
+    const auto wStringFile = QDir::toNativeSeparators(tempFile).toStdWString();
     info.pcszFile = wStringFile.c_str();
     info.pcszClass = nullptr;
     info.oaifInFlags = OAIF_ALLOW_REGISTRATION | OAIF_EXEC;

@@ -124,9 +124,9 @@ bool saveCaptureAtomically(const QPixmap& capture,
 
     const QString ext = QFileInfo(filePath).suffix().toLower();
     const QByteArray fmt = ext.toLatin1();
-    const char* format =
-      QImageWriter::supportedImageFormats().contains(fmt) ? fmt.constData()
-                                                          : nullptr;
+    const char* format = QImageWriter::supportedImageFormats().contains(fmt)
+                           ? fmt.constData()
+                           : nullptr;
     const bool encoded =
       (ext == QLatin1String("jpg") || ext == QLatin1String("jpeg"))
         ? capture.save(&file, format, jpegQuality)
@@ -151,8 +151,8 @@ bool saveToFilesystem(const QPixmap& capture,
                       const QString& messagePrefix)
 {
     ConfigHandler config;
-    QString completePath =
-      FileNameHandler().properScreenshotPath(path, config.saveAsFileExtension());
+    QString completePath = FileNameHandler().properScreenshotPath(
+      path, config.saveAsFileExtension());
     if (completePath.isEmpty()) {
         // invalid filename pattern, already reported
         return false;
@@ -478,8 +478,7 @@ bool saveToFilesystemGUI(
             savePath.replace('/', '\\');
 #endif
             FlameshotDaemon::copyToClipboard(
-              savePath,
-              QObject::tr("Path copied to clipboard as ") + savePath);
+              savePath, QObject::tr("Path copied to clipboard as ") + savePath);
         }
     } else {
         QString msg = QObject::tr("Error trying to save as ") + savePath;
