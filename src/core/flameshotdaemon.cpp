@@ -10,9 +10,13 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QGuiApplication>
 #include <QIODevice>
+#include <QLayout>
 #include <QPixmap>
+#include <QPointer>
 #include <QRect>
+#include <QScreen>
 #include <QTimer>
 
 #if !(defined(Q_OS_MACOS) || defined(Q_OS_WIN))
@@ -393,6 +397,48 @@ void FlameshotDaemon::attachPin(const QPixmap& pixmap, QRect geometry)
 
     pinWidget->show();
     pinWidget->activateWindow();
+}
+
+CaptureRequest FlameshotDaemon::buildEditPinRequest(const PinWidget& existing)
+{
+    CaptureRequest req(CaptureRequest::GRAPHICAL_MODE);
+    req.addTask(CaptureRequest::PIN);
+
+    QRect contentsRect = existing.geometry();
+    if (const QLayout* layout = existing.layout()) {
+        contentsRect = contentsRect.marginsRemoved(layout->contentsMargins());
+    }
+    req.setInitialSelection(contentsRect);
+
+    const auto screens = QGuiApplication::screens();
+    QScreen* targetScreen = QGuiApplication::screenAt(contentsRect.center());
+    if (!targetScreen) {
+        targetScreen = existing.screen();
+    }
+    if (targetScreen) {
+        const int monitorIndex = screens.indexOf(targetScreen);
+        if (monitorIndex >= 0) {
+            req.setSelectedMonitor(monitorIndex);
+        }
+    }
+
+    return req;
+}
+
+void FlameshotDaemon::editPin(PinWidget& existing)
+{
+    Flameshot* flameshot = Flameshot::instance();
+    CaptureWidget* capture = flameshot->gui(buildEditPinRequest(existing));
+    if (!capture) {
+        return;
+    }
+
+    QPointer<PinWidget> pinPtr(&existing);
+    QObject::connect(flameshot, &Flameshot::captureTaken, capture, [pinPtr]() {
+        if (pinPtr) {
+            pinPtr->close();
+        }
+    });
 }
 
 void FlameshotDaemon::attachScreenshotToClipboard(const QPixmap& pixmap)

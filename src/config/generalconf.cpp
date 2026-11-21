@@ -85,6 +85,8 @@ GeneralConf::GeneralConf(QWidget* parent)
     initShowMagnifier();
     initSquareMagnifier();
     initJpegQuality();
+    initArrowMoveStep();
+    initArrowResizeStep();
     initReverseArrow();
     initDrawTextShadow();
     initDrawCircleCounterOutline();
@@ -145,6 +147,8 @@ void GeneralConf::_updateComponents(bool allowEmptySavePath)
     m_showQuitPrompt->setChecked(config.showQuitPrompt());
     m_screenshotPathFixedCheck->setChecked(config.savePathFixed());
     m_undoLimit->setValue(config.undoLimit());
+    m_arrowMoveStep->setValue(config.arrowMoveStep());
+    m_arrowResizeStep->setValue(config.arrowResizeStep());
 
     if (allowEmptySavePath || !config.savePath().isEmpty()) {
         m_savePath->setText(config.savePath());
@@ -1010,6 +1014,42 @@ void GeneralConf::initJpegQuality()
             &GeneralConf::setJpegQuality);
 }
 
+void GeneralConf::initArrowMoveStep()
+{
+    auto* tobox = new QHBoxLayout();
+
+    m_arrowMoveStep = new QSpinBox(this);
+    m_arrowMoveStep->setRange(1, 200);
+    m_arrowMoveStep->setToolTip(
+      tr("Pixels to move the selection per arrow key press"));
+    tobox->addWidget(m_arrowMoveStep);
+    tobox->addWidget(new QLabel(tr("Arrow move step (px)")));
+
+    m_scrollAreaLayout->addLayout(tobox);
+    connect(m_arrowMoveStep,
+            static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged),
+            this,
+            &GeneralConf::setArrowMoveStep);
+}
+
+void GeneralConf::initArrowResizeStep()
+{
+    auto* tobox = new QHBoxLayout();
+
+    m_arrowResizeStep = new QSpinBox(this);
+    m_arrowResizeStep->setRange(1, 200);
+    m_arrowResizeStep->setToolTip(
+      tr("Pixels to resize the selection per Shift+arrow key press"));
+    tobox->addWidget(m_arrowResizeStep);
+    tobox->addWidget(new QLabel(tr("Arrow resize step (px)")));
+
+    m_scrollAreaLayout->addLayout(tobox);
+    connect(m_arrowResizeStep,
+            static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged),
+            this,
+            &GeneralConf::setArrowResizeStep);
+}
+
 void GeneralConf::initReverseArrow()
 {
     m_reverseArrow = new QCheckBox(tr("Reverse arrow"), this);
@@ -1056,6 +1096,16 @@ void GeneralConf::setSelGeoHideTime(int v)
 void GeneralConf::setJpegQuality(int v)
 {
     ConfigHandler().setJpegQuality(v);
+}
+
+void GeneralConf::setArrowMoveStep(int v)
+{
+    ConfigHandler().setArrowMoveStep(v);
+}
+
+void GeneralConf::setArrowResizeStep(int v)
+{
+    ConfigHandler().setArrowResizeStep(v);
 }
 
 void GeneralConf::setGeometryLocation(int index)

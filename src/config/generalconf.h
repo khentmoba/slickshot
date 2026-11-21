@@ -68,6 +68,8 @@ private slots:
     void setGeometryLocation(int index);
     void setSelGeoHideTime(int v);
     void setJpegQuality(int v);
+    void setArrowMoveStep(int v);
+    void setArrowResizeStep(int v);
     void setReverseArrow(bool checked);
     void setInsecurePixelate(bool checked);
     void setDrawTextShadow(bool checked);
@@ -123,6 +125,8 @@ private:
 #endif
     void initShowSelectionGeometry();
     void initJpegQuality();
+    void initArrowMoveStep();
+    void initArrowResizeStep();
     void initReverseArrow();
     void initDrawCircleCounterOutline();
     void initInsecurePixelate();
@@ -192,6 +196,8 @@ private:
     QComboBox* m_selectGeometryLocation;
     QSpinBox* m_xywhTimeout;
     QSpinBox* m_jpegQuality;
+    QSpinBox* m_arrowMoveStep;
+    QSpinBox* m_arrowResizeStep;
     QCheckBox* m_reverseArrow;
     QCheckBox* m_drawCircleCounterOutline;
     QCheckBox* m_insecurePixelate;
