@@ -89,6 +89,10 @@ void raiseAboveMenuBar(QWidget* widget)
 #include <QMessageBox>
 #include <QScreen>
 #include <QThread>
+#if defined(Q_OS_WIN)
+#include <fcntl.h>
+#include <io.h>
+#endif
 #include <QTimer>
 #include <QUrl>
 #include <QVersionNumber>
@@ -637,9 +641,21 @@ void Flameshot::exportCapture(const QPixmap& capture,
     if (tasks & CR::PRINT_RAW) {
         QByteArray byteArray;
         QBuffer buffer(&byteArray);
-        capture.save(&buffer, "PNG");
-        if (QFile file; file.open(stdout, QIODevice::WriteOnly)) {
-            file.write(byteArray);
+        if (!buffer.open(QIODevice::WriteOnly) ||
+            !capture.save(&buffer, "PNG")) {
+            AbstractLogger::error()
+              << QObject::tr("Unable to encode raw PNG capture.");
+        } else {
+#if defined(Q_OS_WIN)
+            std::fflush(stdout);
+            _setmode(_fileno(stdout), _O_BINARY);
+#endif
+            QFile file;
+            if (!file.open(stdout, QIODevice::WriteOnly) ||
+                file.write(byteArray) != byteArray.size()) {
+                AbstractLogger::error()
+                  << QObject::tr("Unable to write raw PNG capture to stdout.");
+            }
             file.close();
         }
     }
@@ -686,13 +702,12 @@ void Flameshot::exportCapture(const QPixmap& capture,
         CR::ExportTask uploadTasks = static_cast<CR::ExportTask>(tasks);
         QObject::connect(
           widget, &ImgUploaderBase::uploadOk, [=, this](const QUrl& url) {
-              if (ConfigHandler().copyURLAfterUpload()) {
-                  if (!(uploadTasks & CR::COPY)) {
-                      FlameshotDaemon::copyToClipboard(
-                        url.toString(), tr("URL copied to clipboard."));
-                  }
-                  widget->showPostUploadDialog();
+              if (ConfigHandler().copyURLAfterUpload() &&
+                  !(uploadTasks & CR::COPY)) {
+                  FlameshotDaemon::copyToClipboard(
+                    url.toString(), tr("URL copied to clipboard."));
               }
+              widget->showPostUploadDialog();
           });
     }
 #endif

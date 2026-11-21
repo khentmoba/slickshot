@@ -106,7 +106,9 @@ LRESULT CALLBACK GlobalShortcutFilter::lowLevelKeyboardProc(int nCode,
             }
         }
 
-        if (s_replaceSnippingTool) {
+        if (s_replaceSnippingTool &&
+            (pKey->vkCode == 'S' || pKey->vkCode == 's' ||
+             pKey->vkCode == VK_SNAPSHOT)) {
             bool winDown = (GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 ||
                            (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0;
             bool shiftDown = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
@@ -210,6 +212,15 @@ LRESULT CALLBACK GlobalShortcutFilter::lowLevelKeyboardProc(int nCode,
 
 void GlobalShortcutFilter::syncHotkeys()
 {
+    const bool needHook = s_replaceSnippingTool || s_intlBackslashCapture;
+    if (needHook && s_keyboardHook == nullptr) {
+        s_keyboardHook = SetWindowsHookEx(
+          WH_KEYBOARD_LL, lowLevelKeyboardProc, GetModuleHandle(NULL), 0);
+    } else if (!needHook && s_keyboardHook != nullptr) {
+        UnhookWindowsHookEx(s_keyboardHook);
+        s_keyboardHook = nullptr;
+    }
+
     UnregisterHotKey(NULL, 1);
     UnregisterHotKey(NULL, 2);
     UnregisterHotKey(NULL, 3);
@@ -231,8 +242,6 @@ GlobalShortcutFilter::GlobalShortcutFilter(QObject* parent)
     s_intlBackslashCapture =
       shortcututils::needsIntlBackslashFallback(QKeySequence(
         ConfigHandler().shortcut(QStringLiteral("TAKE_SCREENSHOT"))));
-    s_keyboardHook = SetWindowsHookEx(
-      WH_KEYBOARD_LL, lowLevelKeyboardProc, GetModuleHandle(NULL), 0);
 
     syncHotkeys();
 
@@ -241,12 +250,14 @@ GlobalShortcutFilter::GlobalShortcutFilter(QObject* parent)
       &ConfigHandler::fileChanged,
       this,
       [this]() {
-          bool newVal = ConfigHandler().replaceSnippingTool();
-          s_intlBackslashCapture =
+          const bool newVal = ConfigHandler().replaceSnippingTool();
+          const bool newIntl =
             shortcututils::needsIntlBackslashFallback(QKeySequence(
               ConfigHandler().shortcut(QStringLiteral("TAKE_SCREENSHOT"))));
-          if (newVal != s_replaceSnippingTool) {
+          if (newVal != s_replaceSnippingTool ||
+              newIntl != s_intlBackslashCapture) {
               s_replaceSnippingTool = newVal;
+              s_intlBackslashCapture = newIntl;
               s_winShiftSConsumed = false;
               s_prntScrConsumed = false;
               syncHotkeys();

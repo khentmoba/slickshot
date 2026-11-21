@@ -171,7 +171,7 @@ void ImgUploaderBase::openURL()
        m_imageURL.scheme().compare(QLatin1String("http"),
                                    Qt::CaseInsensitive) == 0);
     bool successful = allowedScheme && QDesktopServices::openUrl(m_imageURL);
-    if (!successful) {
+    if (!successful && m_notification != nullptr) {
         m_notification->showMessage(tr("Unable to open the URL."));
     }
 }
@@ -179,13 +179,17 @@ void ImgUploaderBase::openURL()
 void ImgUploaderBase::copyURL()
 {
     FlameshotDaemon::copyToClipboard(m_imageURL.toString());
-    m_notification->showMessage(tr("URL copied to clipboard."));
+    if (m_notification != nullptr) {
+        m_notification->showMessage(tr("URL copied to clipboard."));
+    }
 }
 
 void ImgUploaderBase::copyImage()
 {
     FlameshotDaemon::copyToClipboard(m_pixmap);
-    m_notification->showMessage(tr("Screenshot copied to clipboard."));
+    if (m_notification != nullptr) {
+        m_notification->showMessage(tr("Screenshot copied to clipboard."));
+    }
 }
 
 void ImgUploaderBase::deleteCurrentImage()

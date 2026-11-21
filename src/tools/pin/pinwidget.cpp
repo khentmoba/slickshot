@@ -66,6 +66,7 @@ PinWidget::PinWidget(const QPixmap& pixmap,
     m_shadowEffect->setOffset(0, 0);
     setGraphicsEffect(m_shadowEffect);
     m_shadowEffect->setEnabled(conf.pinShadow());
+    m_antialiasingPinZoom = conf.antialiasingPinZoom();
     setWindowOpacity(m_opacity);
 
     m_label->setPixmap(m_pixmap);
@@ -91,7 +92,9 @@ PinWidget::PinWidget(const QPixmap& pixmap,
 
     connect(
       ConfigHandler::getInstance(), &ConfigHandler::fileChanged, this, [this] {
-          m_shadowEffect->setEnabled(ConfigHandler().pinShadow());
+          ConfigHandler updatedConf;
+          m_shadowEffect->setEnabled(updatedConf.pinShadow());
+          m_antialiasingPinZoom = updatedConf.antialiasingPinZoom();
       });
 }
 
@@ -258,9 +261,6 @@ void PinWidget::updatePixmap()
 {
     const auto aspectRatio =
       m_expanding ? Qt::KeepAspectRatioByExpanding : Qt::KeepAspectRatio;
-    const auto transformType = ConfigHandler().antialiasingPinZoom()
-                                 ? Qt::SmoothTransformation
-                                 : Qt::FastTransformation;
     const qreal iw = qMax<qreal>(1.0, m_pixmap.width());
     const qreal ih = qMax<qreal>(1.0, m_pixmap.height());
     const qreal maxW =
@@ -274,7 +274,7 @@ void PinWidget::updatePixmap()
 
     const QSize scaledSize = m_pixmap.size().scaled(nw, nh, aspectRatio);
     m_displaySize = (QSizeF(scaledSize) / m_pixmap.devicePixelRatio()).toSize();
-    renderPixmap(transformType);
+    renderPixmap(Qt::FastTransformation);
     adjustSize();
     m_qualityTimer.start();
 }
@@ -297,7 +297,8 @@ void PinWidget::finishZoom()
         return;
     }
     // Only replace the pixels: the settled image must not resize the window.
-    renderPixmap(Qt::SmoothTransformation);
+    renderPixmap(m_antialiasingPinZoom ? Qt::SmoothTransformation
+                                       : Qt::FastTransformation);
 }
 
 void PinWidget::pinchTriggered(QPinchGesture* gesture)

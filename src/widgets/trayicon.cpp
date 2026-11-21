@@ -243,23 +243,24 @@ void TrayIcon::updateCheckUpdatesMenuVisibility()
 void TrayIcon::initScreenMenu()
 {
 #ifndef Q_OS_MACOS
+    if (m_screenMenu == nullptr) {
+        m_screenMenu = new QMenu(tr("Select Screen"), m_menu);
+        QList<QAction*> actions = m_menu->actions();
+        int index = actions.indexOf(m_launcherAction);
+        if (index >= 0 && index + 1 < actions.size()) {
+            m_menu->insertMenu(actions[index + 1], m_screenMenu);
+        } else {
+            m_menu->addMenu(m_screenMenu);
+        }
+        connect(m_menu, &QMenu::aboutToShow, this, &TrayIcon::initScreenMenu);
+    }
+
+    m_screenMenu->clear();
     const QList<QScreen*> screens = QGuiApplication::screens();
+    m_screenMenu->menuAction()->setVisible(screens.size() > 1);
     if (screens.size() <= 1) {
         return;
     }
-
-    m_screenMenu = new QMenu(tr("Select Screen"));
-
-    QList<QAction*> actions = m_menu->actions();
-    int index = actions.indexOf(m_launcherAction);
-    if (index >= 0 && index + 1 < actions.size()) {
-        m_menu->insertMenu(actions[index + 1], m_screenMenu);
-    } else {
-        m_menu->addMenu(m_screenMenu);
-    }
-
-    QScreen* currentScreen = QGuiAppCurrentScreen().currentScreen();
-    int currentIndex = screens.indexOf(currentScreen);
 
     for (int i = 0; i < screens.size(); ++i) {
         QScreen* screen = screens[i];

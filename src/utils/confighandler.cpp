@@ -949,6 +949,7 @@ void ConfigHandler::ensureFileWatched() const
 {
     QFile file(m_settings.fileName());
     if (!file.exists()) {
+        QDir().mkpath(QFileInfo(m_settings.fileName()).absolutePath());
         // Append mode creates the file without truncating it if a concurrent
         // writer created it between exists() and open() (a 0-byte config).
         if (file.open(QFileDevice::WriteOnly | QFileDevice::Append)) {

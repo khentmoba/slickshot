@@ -49,6 +49,9 @@
 #endif
 
 namespace {
+constexpr QDataStream::Version kIpcStreamVersion = QDataStream::Qt_6_0;
+constexpr int kMaxIpcMessageBytes = 128 * 1024 * 1024;
+
 /**
  * @brief Read a pin message written by FlameshotDaemon::createPin.
  *
@@ -58,13 +61,25 @@ namespace {
  * from an older flameshot don't carry it, in which case the pixmap keeps the
  * ratio it was created with.
  */
-void readPin(QDataStream& stream, QPixmap& pixmap, QRect& geometry)
+bool readPin(QDataStream& stream, QPixmap& pixmap, QRect& geometry)
 {
-    qreal devicePixelRatio = 0;
-    stream >> pixmap >> geometry >> devicePixelRatio;
-    if (stream.status() == QDataStream::Ok && devicePixelRatio > 0) {
-        pixmap.setDevicePixelRatio(devicePixelRatio);
+    stream >> pixmap >> geometry;
+    if (stream.status() != QDataStream::Ok || pixmap.isNull()) {
+        return false;
     }
+    if (!stream.atEnd()) {
+        qreal devicePixelRatio = 0;
+        stream >> devicePixelRatio;
+        if (stream.status() == QDataStream::Ok && devicePixelRatio > 0 &&
+            devicePixelRatio <= 16.0) {
+            pixmap.setDevicePixelRatio(devicePixelRatio);
+        }
+    }
+    if (!geometry.isValid() || geometry.width() <= 0 ||
+        geometry.height() <= 0) {
+        geometry = QRect(QPoint(0, 0), pixmap.deviceIndependentSize().toSize());
+    }
+    return true;
 }
 }
 
@@ -164,6 +179,7 @@ void FlameshotDaemon::createPin(const QPixmap& capture, QRect geometry)
 
     QByteArray data;
     QDataStream stream(&data, QIODevice::WriteOnly);
+    stream.setVersion(kIpcStreamVersion);
 
     // A QPixmap loses its device pixel ratio when streamed, so send it along.
 #if defined(USE_KDSINGLEAPPLICATION) &&                                        \
@@ -192,6 +208,7 @@ void FlameshotDaemon::copyToClipboard(const QPixmap& capture)
 
     QByteArray data;
     QDataStream stream(&data, QIODevice::WriteOnly);
+    stream.setVersion(kIpcStreamVersion);
 
 #if defined(USE_KDSINGLEAPPLICATION) &&                                        \
   (defined(Q_OS_MACOS) || defined(Q_OS_WIN))
@@ -227,6 +244,7 @@ void FlameshotDaemon::copyToClipboard(const QString& text,
     auto kdsa = KDSingleApplication(QStringLiteral("org.flameshot.Flameshot"));
     QByteArray data;
     QDataStream stream(&data, QIODevice::WriteOnly);
+    stream.setVersion(kIpcStreamVersion);
     stream << QStringLiteral("attachTextToClipboard") << text << notification;
     if (kdsa.sendMessage(data)) {
         return;
@@ -629,50 +647,51 @@ void FlameshotDaemon::call(const QDBusMessage& m)
 void FlameshotDaemon::messageReceivedFromSecondaryInstance(
   const QByteArray& message)
 {
-    // qDebug() << "Received message from second instance:" << message;
+    if (message.isEmpty() || message.size() > kMaxIpcMessageBytes) {
+        qWarning() << "Ignoring IPC message with invalid size:"
+                   << message.size();
+        return;
+    }
 
     QByteArray messageCopy = message;
     QBuffer buffer(&messageCopy);
     buffer.open(QIODevice::ReadOnly);
     QDataStream stream(&buffer);
+    stream.setVersion(kIpcStreamVersion);
     QString methodCall;
     stream >> methodCall;
-    // qDebug() << "Method:" << methodCall;
+    if (stream.status() != QDataStream::Ok) {
+        qWarning() << "Failed to decode IPC method name from second instance.";
+        return;
+    }
 
     if (methodCall == QStringLiteral("attachPin")) {
         QPixmap capture;
         QRect geometry;
-        readPin(stream, capture, geometry);
-        // qDebug() << "Pixmap:" << capture;
-        // qDebug() << "Geometry:" << geometry;
-        if (!capture.isNull()) {
+        if (readPin(stream, capture, geometry)) {
             FlameshotDaemon::instance()->attachPin(capture, geometry);
         } else {
-            qWarning() << "Received \"attachPin\" from second instance, but "
-                          "pixmap is empty!";
+            qWarning() << "Received invalid \"attachPin\" from second instance.";
         }
     } else if (methodCall == QStringLiteral("attachScreenshotToClipboard")) {
         QPixmap capture;
         stream >> capture;
-        // qDebug() << "Pixmap:" << capture;
-        if (!capture.isNull()) {
+        if (stream.status() == QDataStream::Ok && !capture.isNull()) {
             FlameshotDaemon::instance()->attachScreenshotToClipboard(capture);
         } else {
             qWarning() << "Received \"attachScreenshotToClipboard\" from "
-                          "second instance, but pixmap is empty!";
+                          "second instance, but pixmap is empty or corrupt!";
         }
     } else if (methodCall == (QStringLiteral("attachTextToClipboard"))) {
         QString text;
         QString notification;
         stream >> text >> notification;
-        // qDebug() << "Text:" << text;
-        // qDebug() << "Notification:" << notification;
-        if (!text.isEmpty()) {
+        if (stream.status() == QDataStream::Ok && !text.isEmpty()) {
             FlameshotDaemon::instance()->attachTextToClipboard(text,
                                                                notification);
         } else {
             qWarning() << "Received \"attachTextToClipboard\" from second "
-                          "instance, but text is empty!";
+                          "instance, but text is empty or corrupt!";
         }
     } else if (methodCall == QStringLiteral("requestCapture") ||
                methodCall == QStringLiteral("gui")) {
@@ -680,7 +699,7 @@ void FlameshotDaemon::messageReceivedFromSecondaryInstance(
           CaptureRequest(CaptureRequest::GRAPHICAL_MODE));
     } else {
         qWarning() << "Received unknown message from second instance:"
-                   << message;
+                   << methodCall;
     }
 }
 #endif

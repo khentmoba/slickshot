@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QTimer>
 #include <QWidget>
 
 class SidePanelWidget;
@@ -36,9 +37,13 @@ private:
     void updateWidget();
     void finalize();
 
+    const QImage& cachedImage() const;
+
     QPixmap m_pixmap;
+    mutable QImage m_cachedImage;
     QImage m_previewImage;
     QColor m_color;
+    QTimer m_extraZoomTimer;
 
     bool m_mousePressReceived;
     bool m_extraZoomActive;

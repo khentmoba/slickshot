@@ -144,6 +144,7 @@ private slots:
     void testPixelateToolHiDpiOffEdgeNoCrash();
     void testCaptureToolObjectsMovePreservesObjects();
     void testSaveToFilesystemWithoutExtensionFallsBackToPng();
+    void testValueHandlerExpectedMessageFormatting();
 #if defined(Q_OS_WIN)
     void testWindowsHdrConvertScRgbToSdr();
     void testQtRuntimeDeployedForStandaloneLaunch();
@@ -2116,6 +2117,17 @@ void SlickShotTests::testSaveToFilesystemWithoutExtensionFallsBackToPng()
     QVERIFY(QFileInfo::exists(actualPath));
     QImage loaded(actualPath);
     QCOMPARE(loaded.size(), QSize(16, 16));
+}
+
+void SlickShotTests::testValueHandlerExpectedMessageFormatting()
+{
+    BoundedInt bounded(1, 100, 50);
+    QCOMPARE(bounded.expected(), QStringLiteral("number between 1 and 100"));
+
+    UserColors colors(3, 17);
+    QCOMPARE(colors.expected(),
+             QStringLiteral(
+               "list of colors(min 2 and max 16) separated by comma"));
 }
 
 #if defined(Q_OS_WIN)

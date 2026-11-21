@@ -22,7 +22,7 @@
 CaptureToolButton::CaptureToolButton(const CaptureTool::Type t,
                                      QWidget* parent,
                                      ConfigHandler* config)
-  : CaptureButton(parent)
+  : CaptureButton(parent, false)
   , m_buttonType(t)
   , m_tool(nullptr)
   , m_emergeAnimation(nullptr)
@@ -48,7 +48,6 @@ void CaptureToolButton::initButton(ConfigHandler* config)
     m_tool = ToolFactory().CreateTool(m_buttonType, this);
 
     setCheckable(m_tool && m_tool->isSelectable());
-    setGraphicsEffect(nullptr);
 
     resize(GlobalValues::buttonBaseSize(), GlobalValues::buttonBaseSize());
     // Modern Windows 11 Fluent rounded-rect style (no circular ellipse mask)
@@ -78,7 +77,7 @@ void CaptureToolButton::initButton(ConfigHandler* config)
     m_emergeAnimation->setEndValue(
       QSize(GlobalValues::buttonBaseSize(), GlobalValues::buttonBaseSize()));
     connect(m_emergeAnimation, &QPropertyAnimation::finished, this, [this]() {
-        updateIcon();
+        setIconSize(size() * 0.6);
     });
 }
 
@@ -134,7 +133,6 @@ CaptureTool* CaptureToolButton::tool() const
 void CaptureToolButton::setColor(const QColor& c)
 {
     CaptureButton::setColor(c);
-    updateIcon();
 }
 
 static std::map<CaptureTool::Type, int> buttonTypeOrder

@@ -722,11 +722,13 @@ int main(int argc, char* argv[])
         bool notification = parser.isSet(notificationOption);
         bool filename = parser.isSet(filenameOption);
         bool tray = parser.isSet(trayOption);
+        bool showHelp = parser.isSet(showHelpOption);
         bool mainColor = parser.isSet(mainColorOption);
         bool contrastColor = parser.isSet(contrastColorOption);
         bool check = parser.isSet(checkOption);
-        bool someFlagSet = (autostart || notification || filename || tray ||
-                            mainColor || contrastColor || check);
+        bool someFlagSet =
+          (autostart || notification || filename || tray || showHelp ||
+           mainColor || contrastColor || check);
         if (check) {
             AbstractLogger err = AbstractLogger::error(AbstractLogger::Stderr);
             bool ok = ConfigHandler().checkForErrors(&err);
@@ -767,6 +769,9 @@ int main(int argc, char* argv[])
             }
             if (tray) {
                 config.setDisabledTrayIcon(parser.value(trayOption) == "false");
+            }
+            if (showHelp) {
+                config.setShowHelp(parser.value(showHelpOption) == "true");
             }
             if (mainColor) {
                 // TODO use value handler

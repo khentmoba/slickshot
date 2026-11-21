@@ -42,6 +42,19 @@ ColorGrabWidget::ColorGrabWidget(QPixmap* p, QWidget* parent)
     setWindowFlags(Qt::BypassWindowManagerHint | Qt::WindowStaysOnTopHint |
                    Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus);
     setMouseTracking(true);
+
+    m_extraZoomTimer.setSingleShot(true);
+    m_extraZoomTimer.setInterval(250);
+    connect(&m_extraZoomTimer, &QTimer::timeout, this, [this]() {
+        if (!m_extraZoomActive) {
+            return;
+        }
+        if (!isVisible()) {
+            show();
+        } else {
+            updateWidget();
+        }
+    });
 }
 
 ColorGrabWidget::~ColorGrabWidget()
@@ -191,6 +204,14 @@ QPoint ColorGrabWidget::physicalPixelAt(const QPoint& globalPos) const
     return point;
 }
 
+const QImage& ColorGrabWidget::cachedImage() const
+{
+    if (m_cachedImage.isNull() && !m_pixmap.isNull()) {
+        m_cachedImage = m_pixmap.toImage();
+    }
+    return m_cachedImage;
+}
+
 /// @note The point is in screen coordinates.
 QColor ColorGrabWidget::getColorAtPoint(const QPoint& p) const
 {
@@ -202,25 +223,25 @@ QColor ColorGrabWidget::getColorAtPoint(const QPoint& p) const
             return m_previewImage.pixel(samplePt);
         }
     }
-    if (m_pixmap.isNull()) {
+    const QImage& img = cachedImage();
+    if (img.isNull()) {
         return QColor();
     }
-    QPoint point = physicalPixelAt(p);
-    QPixmap pixel = m_pixmap.copy(QRect(point, point));
-    return pixel.toImage().pixel(0, 0);
+    const QPoint point = physicalPixelAt(p);
+    if (!img.rect().contains(point)) {
+        return QColor();
+    }
+    return img.pixel(point);
 }
 
 void ColorGrabWidget::setExtraZoomActive(bool active)
 {
     m_extraZoomActive = active;
+    m_extraZoomTimer.stop();
     if (!active && !m_magnifierActive) {
         hide();
-    } else {
-        if (!isVisible()) {
-            QTimer::singleShot(250, this, [this]() { show(); });
-        } else {
-            QTimer::singleShot(250, this, [this]() { updateWidget(); });
-        }
+    } else if (active) {
+        m_extraZoomTimer.start();
     }
 }
 
@@ -244,16 +265,18 @@ void ColorGrabWidget::updateWidget()
 
     rect.moveCenter(cursorPos());
     setGeometry(rect);
-    // Store a pixmap containing the zoomed-in section around the cursor
+    // Store a zoomed-in section around the cursor from the cached CPU image.
     QRect sourceRect(0, 0, width / zoom, width / zoom);
     sourceRect.moveCenter(adjustedCursorPos);
-    m_previewImage = m_pixmap.copy(sourceRect).toImage();
+    const QImage& img = cachedImage();
+    m_previewImage = img.isNull() ? QImage() : img.copy(sourceRect);
     // Repaint
     update();
 }
 
 void ColorGrabWidget::finalize()
 {
+    m_extraZoomTimer.stop();
     if (!m_grabActive) {
         return;
     }

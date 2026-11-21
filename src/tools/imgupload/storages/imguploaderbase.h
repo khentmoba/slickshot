@@ -53,19 +53,19 @@ private slots:
 private:
     QPixmap m_pixmap;
 
-    QVBoxLayout* m_vLayout;
-    QHBoxLayout* m_hLayout;
+    QVBoxLayout* m_vLayout{ nullptr };
+    QHBoxLayout* m_hLayout{ nullptr };
     // loading
-    QLabel* m_infoLabel;
-    LoadSpinner* m_spinner;
+    QLabel* m_infoLabel{ nullptr };
+    LoadSpinner* m_spinner{ nullptr };
     // uploaded
-    QPushButton* m_openUrlButton;
-    QPushButton* m_openDeleteUrlButton;
-    QPushButton* m_copyUrlButton;
-    QPushButton* m_toClipboardButton;
-    QPushButton* m_saveToFilesystemButton;
+    QPushButton* m_openUrlButton{ nullptr };
+    QPushButton* m_openDeleteUrlButton{ nullptr };
+    QPushButton* m_copyUrlButton{ nullptr };
+    QPushButton* m_toClipboardButton{ nullptr };
+    QPushButton* m_saveToFilesystemButton{ nullptr };
     QUrl m_imageURL;
-    NotificationWidget* m_notification;
+    NotificationWidget* m_notification{ nullptr };
 
 public:
     QString m_currentImageName;

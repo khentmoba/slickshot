@@ -16,6 +16,7 @@
 #include "core/qguiappcurrentscreen.h"
 #include "tools/copy/copytool.h"
 #include "utils/abstractlogger.h"
+#include "utils/geometryutils.h"
 #include "utils/screengrabber.h"
 #include "utils/screenshotsaver.h"
 #include "utils/windowpicker.h"
@@ -1942,7 +1943,7 @@ void CaptureWidget::updateSizeIndicator()
     if (m_sizeIndButton) {
         const QRect& selection = extendedSelection();
         m_sizeIndButton->setText(
-          QStringLiteral("%1\n%2").arg(selection.width(), selection.height()));
+          QStringLiteral("%1\n%2").arg(selection.width()).arg(selection.height()));
     }
 }
 
@@ -2549,11 +2550,8 @@ QRect CaptureWidget::extendedSelection() const
 
 QRect CaptureWidget::extendedRect(const QRect& r) const
 {
-    auto devicePixelRatio = m_context.screenshot.devicePixelRatio();
-    return { static_cast<int>(r.left() * devicePixelRatio),
-             static_cast<int>(r.top() * devicePixelRatio),
-             static_cast<int>(r.width() * devicePixelRatio),
-             static_cast<int>(r.height() * devicePixelRatio) };
+    return GeometryUtils::logicalToPixmap(r,
+                                          m_context.screenshot.devicePixelRatio());
 }
 
 QRect CaptureWidget::paddedUpdateRect(const QRect& r) const
@@ -2574,7 +2572,7 @@ void CaptureWidget::drawErrorMessage(const QString& msg, QPainter* painter)
     };
     QScreen* currentScreen = QGuiAppCurrentScreen().currentScreen();
 
-    if (!textRect.contains(QCursor::pos(currentScreen))) {
+    if (!textRect.contains(mapFromGlobal(QCursor::pos(currentScreen)))) {
         QColor textColor(Qt::white);
         painter->setPen(textColor);
         painter->drawText(textRect, msg);
