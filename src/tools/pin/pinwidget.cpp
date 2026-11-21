@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2017-2019 Alejandro Sirgo Rica & Contributors
 
 #include "pinwidget.h"
+#include "core/flameshotdaemon.h"
 #include "core/qguiappcurrentscreen.h"
 #include "utils/confighandler.h"
 #include "utils/globalvalues.h"
@@ -327,6 +328,10 @@ void PinWidget::showContextMenu(const QPoint& pos)
       &saveToFileAction, &QAction::triggered, this, &PinWidget::saveToFile);
     contextMenu.addAction(&saveToFileAction);
 
+    QAction editAction(tr("Edit Pin"), this);
+    connect(&editAction, &QAction::triggered, this, &PinWidget::edit);
+    contextMenu.addAction(&editAction);
+
     contextMenu.addSeparator();
 
     QAction rotateRightAction(tr("Rotate Right"), this);
@@ -370,4 +375,9 @@ void PinWidget::saveToFile()
     hide();
     saveToFilesystemGUI(m_pixmap);
     show();
+}
+
+void PinWidget::edit()
+{
+    QTimer::singleShot(0, this, [this]() { FlameshotDaemon::editPin(*this); });
 }

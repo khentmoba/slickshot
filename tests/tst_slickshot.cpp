@@ -19,6 +19,8 @@
 #include <QMimeData>
 #include <QPainter>
 #include <QPixmap>
+#include <QPointer>
+#include <QSpinBox>
 #include <QStandardPaths>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -30,7 +32,9 @@
 #include <QWidget>
 
 #include "config/configwindow.h"
+#include "config/generalconf.h"
 #include "config/shortcutswidget.h"
+#include "core/flameshot.h"
 #include "core/flameshotdaemon.h"
 #include "core/qguiappcurrentscreen.h"
 #include "tools/arrow/arrowtool.h"
@@ -128,6 +132,9 @@ private slots:
     void testSaveToFilesystemAtomicAndFailure();
     void testInvertToolHiDpiAndCache();
     void testScreenGrabberNullScreenGuard();
+    void testArrowStepConfigAndSelectionWidget();
+    void testGeneralConfArrowStepControls();
+    void testEditPinRequestAndLifecycle();
 #if defined(Q_OS_WIN)
     void testWindowsHdrConvertScRgbToSdr();
     void testQtRuntimeDeployedForStandaloneLaunch();
@@ -1741,6 +1748,182 @@ void SlickShotTests::testScreenGrabberNullScreenGuard()
     QVERIFY(!ok);
     QVERIFY(p.isNull());
     QVERIFY(grabber.screenGeometry(nullptr).isNull());
+}
+
+void SlickShotTests::testArrowStepConfigAndSelectionWidget()
+{
+    ConfigHandler config;
+    const int origMove = config.arrowMoveStep();
+    const int origResize = config.arrowResizeStep();
+
+    config.resetValue(QStringLiteral("arrowMoveStep"));
+    config.resetValue(QStringLiteral("arrowResizeStep"));
+    QCOMPARE(config.arrowMoveStep(), 1);
+    QCOMPARE(config.arrowResizeStep(), 1);
+
+    config.setArrowMoveStep(15);
+    config.setArrowResizeStep(10);
+    QCOMPARE(config.arrowMoveStep(), 15);
+    QCOMPARE(config.arrowResizeStep(), 10);
+
+    QWidget parent;
+    parent.resize(400, 300);
+
+    SelectionWidget selection(Qt::red, &parent);
+    selection.setGeometry(QRect(50, 50, 100, 80));
+
+    selection.moveRight();
+    QCOMPARE(selection.geometry(), QRect(65, 50, 100, 80));
+    selection.moveDown();
+    QCOMPARE(selection.geometry(), QRect(65, 65, 100, 80));
+    selection.moveLeft();
+    QCOMPARE(selection.geometry(), QRect(50, 65, 100, 80));
+    selection.moveUp();
+    QCOMPARE(selection.geometry(), QRect(50, 50, 100, 80));
+
+    // Moving past the left edge must clamp without shrinking width.
+    selection.setGeometry(QRect(5, 50, 100, 80));
+    selection.moveLeft();
+    QCOMPARE(selection.geometry(), QRect(0, 50, 100, 80));
+
+    // Resize by configured step.
+    selection.setGeometry(QRect(50, 50, 100, 80));
+    selection.resizeRight();
+    QCOMPARE(selection.geometry(), QRect(50, 50, 110, 80));
+    selection.resizeDown();
+    QCOMPARE(selection.geometry(), QRect(50, 50, 110, 90));
+    selection.resizeLeft();
+    QCOMPARE(selection.geometry(), QRect(50, 50, 100, 90));
+    selection.resizeUp();
+    QCOMPARE(selection.geometry(), QRect(50, 50, 100, 80));
+
+    // Shrinking below the step must clamp to 1px in place, not jump to (0,0).
+    selection.setGeometry(QRect(50, 50, 6, 6));
+    selection.resizeLeft();
+    QCOMPARE(selection.geometry(), QRect(50, 50, 1, 6));
+    selection.resizeUp();
+    QCOMPARE(selection.geometry(), QRect(50, 50, 1, 1));
+
+    // Symmetric resize and safe collapse when width/height < 2 * step.
+    selection.setGeometry(QRect(100, 100, 40, 40));
+    selection.symResizeRight();
+    QCOMPARE(selection.geometry(), QRect(90, 100, 60, 40));
+    selection.symResizeUp();
+    QCOMPARE(selection.geometry(), QRect(90, 90, 60, 60));
+    selection.symResizeLeft();
+    QCOMPARE(selection.geometry(), QRect(100, 90, 40, 60));
+    selection.symResizeDown();
+    QCOMPARE(selection.geometry(), QRect(100, 100, 40, 40));
+
+    selection.setGeometry(QRect(100, 100, 12, 12));
+    selection.symResizeLeft();
+    QCOMPARE(selection.geometry().width(), 1);
+    QCOMPARE(selection.geometry().top(), 100);
+    QCOMPARE(selection.geometry().height(), 12);
+    selection.symResizeDown();
+    QCOMPARE(selection.geometry().height(), 1);
+    QCOMPARE(selection.geometry().left(), 105);
+
+    config.setArrowMoveStep(origMove);
+    config.setArrowResizeStep(origResize);
+}
+
+void SlickShotTests::testGeneralConfArrowStepControls()
+{
+    ConfigHandler config;
+    const int origMove = config.arrowMoveStep();
+    const int origResize = config.arrowResizeStep();
+
+    config.setArrowMoveStep(8);
+    config.setArrowResizeStep(12);
+
+    GeneralConf conf;
+    QSpinBox* moveSpin = nullptr;
+    QSpinBox* resizeSpin = nullptr;
+    for (QSpinBox* spin : conf.findChildren<QSpinBox*>()) {
+        if (spin->minimum() == 1 && spin->maximum() == 200) {
+            if (spin->toolTip().contains(QStringLiteral("move"),
+                                         Qt::CaseInsensitive)) {
+                moveSpin = spin;
+            } else if (spin->toolTip().contains(QStringLiteral("resize"),
+                                                Qt::CaseInsensitive)) {
+                resizeSpin = spin;
+            }
+        }
+    }
+
+    QVERIFY(moveSpin != nullptr);
+    QVERIFY(resizeSpin != nullptr);
+    QCOMPARE(moveSpin->value(), 8);
+    QCOMPARE(resizeSpin->value(), 12);
+
+    moveSpin->setValue(25);
+    resizeSpin->setValue(30);
+    QCOMPARE(config.arrowMoveStep(), 25);
+    QCOMPARE(config.arrowResizeStep(), 30);
+
+    config.setArrowMoveStep(origMove);
+    config.setArrowResizeStep(origResize);
+}
+
+void SlickShotTests::testEditPinRequestAndLifecycle()
+{
+    QPixmap pix(120, 80);
+    pix.fill(Qt::blue);
+    const QRect pinRect(40, 50, 120, 80);
+
+    QPointer<PinWidget> pin = new PinWidget(pix, pinRect);
+    const CaptureRequest req = FlameshotDaemon::buildEditPinRequest(*pin);
+
+    QCOMPARE(req.captureMode(), CaptureRequest::GRAPHICAL_MODE);
+    QVERIFY(req.tasks() & CaptureRequest::PIN);
+    QCOMPARE(req.initialSelection(), pinRect);
+    if (!QGuiApplication::screens().isEmpty()) {
+        QVERIFY(req.hasSelectedMonitor());
+    }
+
+    // Cancel path: if capture is cancelled, the original pin stays alive.
+    FlameshotDaemon::editPin(*pin);
+    QCoreApplication::processEvents();
+    CaptureWidget* activeCapture = nullptr;
+    for (QWidget* w : QApplication::topLevelWidgets()) {
+        if (auto* cw = qobject_cast<CaptureWidget*>(w)) {
+            activeCapture = cw;
+            break;
+        }
+    }
+    if (activeCapture) {
+        activeCapture->close();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCoreApplication::processEvents();
+        QVERIFY(!pin.isNull());
+
+        // Accept path: emitting captureTaken while the edit capture is open
+        // closes the original pin.
+        FlameshotDaemon::editPin(*pin);
+        QCoreApplication::processEvents();
+        activeCapture = nullptr;
+        for (QWidget* w : QApplication::topLevelWidgets()) {
+            if (auto* cw = qobject_cast<CaptureWidget*>(w)) {
+                activeCapture = cw;
+                break;
+            }
+        }
+        QVERIFY(activeCapture != nullptr);
+        emit Flameshot::instance()->captureTaken(pix);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCoreApplication::processEvents();
+        QVERIFY(pin.isNull());
+        if (activeCapture) {
+            activeCapture->close();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            QCoreApplication::processEvents();
+        }
+    } else {
+        pin->close();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCoreApplication::processEvents();
+    }
 }
 
 #if defined(Q_OS_WIN)

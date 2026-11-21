@@ -13,7 +13,9 @@ class QWidget;
 class QDBusMessage;
 class QDBusConnection;
 class TrayIcon;
+class CaptureRequest;
 class CaptureWidget;
+class PinWidget;
 
 #if !defined(DISABLE_UPDATE_CHECKER)
 class QNetworkAccessManager;
@@ -30,6 +32,8 @@ public:
     static void start();
     static FlameshotDaemon* instance();
     static void createPin(const QPixmap& capture, QRect geometry);
+    static CaptureRequest buildEditPinRequest(const PinWidget& existing);
+    static void editPin(PinWidget& pinned);
     static void copyToClipboard(const QPixmap& capture);
     static void copyToClipboard(const QString& text,
                                 const QString& notification = "");
