@@ -14,6 +14,7 @@
 #include <QImageWriter>
 #include <QPixmap>
 #include <QProcess>
+#include <QSaveFile>
 #include <QTemporaryFile>
 
 #if USE_WAYLAND_CLIPBOARD
@@ -109,55 +110,78 @@ bool createParentDirectories(const QString& filePath)
            QObject::tr("Unable to create directory ") + dirPath;
     return false;
 }
+
+bool saveCaptureAtomically(const QPixmap& capture,
+                           const QString& filePath,
+                           int jpegQuality,
+                           QString& errorString)
+{
+    QSaveFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        errorString = file.errorString();
+        return false;
+    }
+
+    const QString ext = QFileInfo(filePath).suffix().toLower();
+    const QByteArray fmt = ext.toLatin1();
+    const char* format = QImageWriter::supportedImageFormats().contains(fmt)
+                           ? fmt.constData()
+                           : nullptr;
+    const bool encoded =
+      (ext == QLatin1String("jpg") || ext == QLatin1String("jpeg"))
+        ? capture.save(&file, format, jpegQuality)
+        : capture.save(&file, format);
+    if (!encoded) {
+        if (file.error() != QFileDevice::NoError) {
+            errorString = file.errorString();
+        }
+        file.cancelWriting();
+        return false;
+    }
+    if (!file.commit()) {
+        errorString = file.errorString();
+        return false;
+    }
+    return true;
+}
 } // namespace
 
 bool saveToFilesystem(const QPixmap& capture,
                       const QString& path,
                       const QString& messagePrefix)
 {
+    ConfigHandler config;
     QString completePath = FileNameHandler().properScreenshotPath(
-      path, ConfigHandler().saveAsFileExtension());
-    QFile file{ completePath };
-    bool okay = false;
-
+      path, config.saveAsFileExtension());
     if (completePath.isEmpty()) {
         // invalid filename pattern, already reported
-        return okay;
+        return false;
     }
     // Only a directory gets its file name, and subdirectories, from the pattern
     if (QFileInfo(path).isDir() && !createParentDirectories(completePath)) {
-        return okay;
+        return false;
     }
 
-    if (file.open(QIODevice::WriteOnly)) {
-        QString saveExtension;
-        saveExtension = QFileInfo(completePath).suffix().toLower();
-        if (saveExtension == "jpg" || saveExtension == "jpeg") {
-            okay = capture.save(&file, nullptr, ConfigHandler().jpegQuality());
-        } else {
-            okay = capture.save(&file);
-        }
+    QString errorString;
+    const bool okay = saveCaptureAtomically(
+      capture, completePath, config.jpegQuality(), errorString);
 
-        QString saveMessage = messagePrefix;
-        QString notificationPath = completePath;
-        if (!saveMessage.isEmpty()) {
-            saveMessage += " ";
-        }
+    QString saveMessage = messagePrefix;
+    if (!saveMessage.isEmpty()) {
+        saveMessage += " ";
+    }
 
-        if (okay) {
-            saveMessage += QObject::tr("Capture saved as ") + completePath;
-            AbstractLogger::info().attachNotificationPath(notificationPath)
-              << saveMessage;
-        } else {
-            saveMessage +=
-              QObject::tr("Error trying to save as ") + completePath;
-            if (file.error() != QFile::NoError) {
-                saveMessage += ": " + file.errorString();
-            }
-            notificationPath = "";
-            AbstractLogger::error().attachNotificationPath(notificationPath)
-              << saveMessage;
+    if (okay) {
+        saveMessage += QObject::tr("Capture saved as ") + completePath;
+        AbstractLogger::info().attachNotificationPath(completePath)
+          << saveMessage;
+    } else {
+        saveMessage += QObject::tr("Error trying to save as ") + completePath;
+        if (!errorString.isEmpty()) {
+            saveMessage += ": " + errorString;
         }
+        AbstractLogger::error().attachNotificationPath(QString())
+          << saveMessage;
     }
     return okay;
 }
@@ -429,54 +453,44 @@ bool saveToFilesystemGUI(
         return okay;
     }
 
-    QFile file{ savePath };
-    if (file.open(QIODevice::WriteOnly)) {
-        QString saveExtension;
-        saveExtension = QFileInfo(savePath).suffix().toLower();
-        if (saveExtension == "jpg" || saveExtension == "jpeg") {
-            okay = capture.save(&file, nullptr, ConfigHandler().jpegQuality());
-        } else {
-            okay = capture.save(&file);
+    QString errorString;
+    okay = saveCaptureAtomically(
+      capture, savePath, config.jpegQuality(), errorString);
+
+    if (okay) {
+        // Don't use QDir::separator() here, as Qt internally always uses '/'
+        QString pathNoFile = savePath.left(savePath.lastIndexOf('/'));
+        // Keep the base directory when saved in the subdirectories from
+        // the pattern, otherwise they would be nested again on each save
+        if (QFileInfo(defaultSavePath).isDir() &&
+            QDir(patternDir) != QDir(defaultSavePath) &&
+            QDir(pathNoFile) == QDir(patternDir)) {
+            pathNoFile = defaultSavePath;
         }
 
-        if (okay) {
-            // Don't use QDir::separator() here, as Qt internally always uses
-            // '/'
-            QString pathNoFile = savePath.left(savePath.lastIndexOf('/'));
-            // Keep the base directory when saved in the subdirectories from
-            // the pattern, otherwise they would be nested again on each save
-            if (QFileInfo(defaultSavePath).isDir() &&
-                QDir(patternDir) != QDir(defaultSavePath) &&
-                QDir(pathNoFile) == QDir(patternDir)) {
-                pathNoFile = defaultSavePath;
-            }
+        config.setSavePath(pathNoFile);
 
-            ConfigHandler().setSavePath(pathNoFile);
+        QString msg = QObject::tr("Capture saved as ") + savePath;
+        AbstractLogger().attachNotificationPath(savePath) << msg;
 
-            QString msg = QObject::tr("Capture saved as ") + savePath;
-            AbstractLogger().attachNotificationPath(savePath) << msg;
-
-            if (config.copyPathAfterSave()) {
+        if (config.copyPathAfterSave()) {
 #ifdef Q_OS_WIN
-                savePath.replace('/', '\\');
+            savePath.replace('/', '\\');
 #endif
-                FlameshotDaemon::copyToClipboard(
-                  savePath,
-                  QObject::tr("Path copied to clipboard as ") + savePath);
-            }
-
-        } else {
-            QString msg = QObject::tr("Error trying to save as ") + savePath;
-
-            if (file.error() != QFile::NoError) {
-                msg += ": " + file.errorString();
-            }
-
-            QMessageBox saveErrBox(
-              QMessageBox::Warning, QObject::tr("Save Error"), msg);
-            saveErrBox.setWindowIcon(QIcon(GlobalValues::iconPath()));
-            saveErrBox.exec();
+            FlameshotDaemon::copyToClipboard(
+              savePath, QObject::tr("Path copied to clipboard as ") + savePath);
         }
+    } else {
+        QString msg = QObject::tr("Error trying to save as ") + savePath;
+        if (!errorString.isEmpty()) {
+            msg += ": " + errorString;
+        }
+        AbstractLogger::error() << msg;
+
+        QMessageBox saveErrBox(
+          QMessageBox::Warning, QObject::tr("Save Error"), msg);
+        saveErrBox.setWindowIcon(QIcon(GlobalValues::iconPath()));
+        saveErrBox.exec();
     }
 
     return okay;

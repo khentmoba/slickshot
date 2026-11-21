@@ -393,6 +393,10 @@ QPixmap ScreenGrabber::grabEntireDesktop(bool& ok, int preSelectedMonitor)
         return screenshot;
     }
     screenshot = windowsScreenshot(wid);
+    if (screenshot.isNull()) {
+        ok = false;
+        return QPixmap();
+    }
 #endif
 
     // If monitor was pre-selected skip UI and crop directly
@@ -439,6 +443,7 @@ QPixmap ScreenGrabber::grabFullDesktop(bool& ok)
     screenshot = unixScreenshot(ok);
 #elif defined(Q_OS_WIN)
     screenshot = windowsScreenshot(0);
+    ok = !screenshot.isNull();
 #endif
 
     return screenshot;
@@ -446,6 +451,9 @@ QPixmap ScreenGrabber::grabFullDesktop(bool& ok)
 
 QRect ScreenGrabber::screenGeometry(QScreen* screen)
 {
+    if (!screen) {
+        return {};
+    }
     QRect geometry = screen->geometry();
     if (m_info.waylandDetected()) {
         QPoint topLeft(0, 0);
@@ -456,6 +464,10 @@ QRect ScreenGrabber::screenGeometry(QScreen* screen)
 
 QPixmap ScreenGrabber::grabScreen(QScreen* screen, bool& ok)
 {
+    if (!screen) {
+        ok = false;
+        return {};
+    }
     QPixmap p;
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     const QList<QScreen*> screens = QGuiApplication::screens();
@@ -463,11 +475,19 @@ QPixmap ScreenGrabber::grabScreen(QScreen* screen, bool& ok)
 
     p = grabEntireDesktop(ok, screenIndex);
 #else
+#if defined(Q_OS_WIN)
+    // HDR monitors must be captured as FP16 scRGB; GDI collapses them to
+    // 8 bits before we can convert them. Falls back to GDI on SDR screens.
+    p = WindowsHdrCapture::grabScreen(screen);
+    if (!p.isNull()) {
+        ok = true;
+        return p;
+    }
+#endif
     // QScreen::grabWindow() offsets are relative to this screen, so passing
     // the logical (possibly negative) global x/y captures the wrong area.
     // Grab the whole screen instead; no local crop is needed because the
     // result already covers exactly this screen.
-    ok = true;
     p = screen->grabWindow(0);
     ok = !p.isNull();
     if (ok) {
@@ -578,11 +598,12 @@ QWidget* ScreenGrabber::createMonitorPreviews(const QPixmap& fullScreenshot)
     monitorPreviews->setLayout(containerLayout);
     monitorPreviews->adjustSize();
 
-    QScreen* primaryScreen = QGuiApplication::primaryScreen();
-    QRect screenGeometry = primaryScreen->geometry();
-    QPoint center = screenGeometry.center();
-    monitorPreviews->move(center.x() - monitorPreviews->width() / 2,
-                          center.y() - monitorPreviews->height() / 2);
+    if (QScreen* primaryScreen = QGuiApplication::primaryScreen()) {
+        QRect screenGeometry = primaryScreen->geometry();
+        QPoint center = screenGeometry.center();
+        monitorPreviews->move(center.x() - monitorPreviews->width() / 2,
+                              center.y() - monitorPreviews->height() / 2);
+    }
 
     monitorPreviews->show();
     monitorPreviews->raise();

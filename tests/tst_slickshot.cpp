@@ -22,6 +22,7 @@
 #include <QStandardPaths>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTest>
 #include <QVersionNumber>
@@ -122,6 +123,11 @@ private slots:
     void testFilenamePatternSubdirectories();
     void testTextToolShadowRendering();
     void testWindowPickerIgnoresOwnWindow();
+    void testOpenWithTempDirAndCleanup();
+    void testWindowsFilenameSanitization();
+    void testSaveToFilesystemAtomicAndFailure();
+    void testInvertToolHiDpiAndCache();
+    void testScreenGrabberNullScreenGuard();
 #if defined(Q_OS_WIN)
     void testWindowsHdrConvertScRgbToSdr();
     void testQtRuntimeDeployedForStandaloneLaunch();
@@ -278,7 +284,9 @@ void SlickShotTests::testAppUpdateInstallScriptAndEncode()
       QStringLiteral("C:\\Users\\O'Connor\\AppData\\Local\\Programs\\"
                      "SlickShot\\bin\\flameshot.exe"));
 
-    QVERIFY(script.contains(QStringLiteral("Wait-Process -Id 1234")));
+    QVERIFY(script.contains(QStringLiteral("Get-Process -Id 1234")));
+    QVERIFY(script.contains(QStringLiteral("WaitForExit(120000)")));
+    QVERIFY(script.contains(QStringLiteral("exit 1")));
     QVERIFY(script.contains(QStringLiteral("O''Connor")));
     QVERIFY(script.contains(QStringLiteral("[System.IO.FileShare]::Read")));
     QVERIFY(script.contains(QStringLiteral("ComputeHash")));
@@ -286,6 +294,15 @@ void SlickShotTests::testAppUpdateInstallScriptAndEncode()
     QVERIFY(script.contains(QStringLiteral("Start-Process -FilePath $app")));
     QVERIFY(!script.contains(QStringLiteral("msiexec")));
     QVERIFY(!script.contains(QStringLiteral("%")));
+#if defined(Q_OS_WIN)
+    const QString psPath = AppUpdate::powershellExecutablePath();
+    QVERIFY(!psPath.isEmpty());
+    QVERIFY(QFileInfo(psPath).isAbsolute());
+    QVERIFY(
+      psPath.endsWith(QStringLiteral("WindowsPowerShell\\v1.0\\powershell.exe"),
+                      Qt::CaseInsensitive));
+    QVERIFY(QFileInfo::exists(psPath));
+#endif
 
     const QString encoded = AppUpdate::encodeCommand(QStringLiteral("abc"));
     const QByteArray raw = QByteArray::fromBase64(encoded.toLatin1());
@@ -1588,6 +1605,142 @@ void SlickShotTests::testWindowPickerIgnoresOwnWindow()
     const QRect picked = WindowPicker::windowRectAt(QPoint(100, 100));
     Q_UNUSED(picked);
     QVERIFY(ConfigHandler().pinShadow());
+}
+
+void SlickShotTests::testOpenWithTempDirAndCleanup()
+{
+    const QString openWithDir = launcherutils::openWithTempDir();
+    QVERIFY(openWithDir.endsWith(QStringLiteral("SlickShot-openwith")));
+    QVERIFY(QDir::cleanPath(openWithDir) != QDir::cleanPath(QDir::tempPath()));
+
+    const QString appExe = QCoreApplication::applicationFilePath();
+    QCOMPARE(QDir::cleanPath(launcherutils::safeWorkingDirectory(appExe)),
+             QDir::cleanPath(QFileInfo(appExe).absolutePath()));
+    QCOMPARE(QDir::cleanPath(
+               launcherutils::safeWorkingDirectory(QStringLiteral("mspaint"))),
+             QDir::cleanPath(QDir::homePath()));
+
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString stalePng = tempDir.filePath(QStringLiteral("stale.png"));
+    const QString freshPng = tempDir.filePath(QStringLiteral("fresh.png"));
+    const QString otherFile = tempDir.filePath(QStringLiteral("keep.txt"));
+
+    for (const QString& path : { stalePng, freshPng, otherFile }) {
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("data");
+        f.close();
+    }
+
+    QFile stale(stalePng);
+    QVERIFY(stale.open(QIODevice::ReadWrite));
+    QVERIFY(stale.setFileTime(QDateTime::currentDateTimeUtc().addSecs(-300),
+                              QFileDevice::FileModificationTime));
+    stale.close();
+
+    const int removed =
+      launcherutils::cleanupStaleOpenWithFiles(tempDir.path(), 60);
+    QCOMPARE(removed, 1);
+    QVERIFY(!QFileInfo::exists(stalePng));
+    QVERIFY(QFileInfo::exists(freshPng));
+    QVERIFY(QFileInfo::exists(otherFile));
+}
+
+void SlickShotTests::testWindowsFilenameSanitization()
+{
+    FileNameHandler handler;
+#if defined(Q_OS_WIN)
+    const QString sanitized =
+      handler.parseFilename(QStringLiteral("shot<>\"|?*name...  "));
+    QCOMPARE(sanitized, QStringLiteral("shot______name"));
+    QVERIFY(handler.parseFilename(QStringLiteral("...")).isEmpty());
+    QVERIFY(handler.parseFilename(QStringLiteral("   ")).isEmpty());
+    QCOMPARE(handler.parseFilename(QStringLiteral("CON  ")),
+             QStringLiteral("_CON"));
+    QCOMPARE(handler.parseFilename(QStringLiteral("NUL.")),
+             QStringLiteral("_NUL"));
+#else
+    QVERIFY(!handler.parseFilename(QStringLiteral("shot_name")).isEmpty());
+#endif
+}
+
+void SlickShotTests::testSaveToFilesystemAtomicAndFailure()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    QPixmap pix(16, 16);
+    pix.fill(Qt::blue);
+
+    const QString validPath = tempDir.filePath(QStringLiteral("ok.png"));
+    QVERIFY(saveToFilesystem(pix, validPath));
+    QVERIFY(QFileInfo::exists(validPath));
+    QVERIFY(QFileInfo(validPath).size() > 0);
+    QImage loaded(validPath);
+    QCOMPARE(loaded.size(), QSize(16, 16));
+    QCOMPARE(loaded.pixelColor(0, 0), QColor(Qt::blue));
+
+    // Saving into a non-existent directory must fail cleanly without creating a
+    // stray file.
+    const QString badPath =
+      tempDir.filePath(QStringLiteral("nonexistent_subdir/fail.png"));
+    QVERIFY(!saveToFilesystem(pix, badPath));
+    QVERIFY(!QFileInfo::exists(badPath));
+}
+
+void SlickShotTests::testInvertToolHiDpiAndCache()
+{
+    QPixmap canvas(40, 40);
+    canvas.setDevicePixelRatio(2.0);
+    canvas.fill(QColor(10, 20, 30));
+
+    InvertTool tool;
+    CaptureContext ctx;
+    ctx.mousePos = QPoint(2, 2);
+    tool.drawStart(ctx);
+    tool.drawMove(QPoint(11, 11)); // logical rect (2,2) size 10x10
+
+    QPainter painter(&canvas);
+    tool.process(painter, canvas);
+    painter.end();
+
+    QImage img = canvas.toImage();
+    // At 2x DPR, logical (2,2,10,10) covers physical [4..23, 4..23].
+    QCOMPARE(img.pixelColor(4, 4), QColor(245, 235, 225));
+    QCOMPARE(img.pixelColor(23, 23), QColor(245, 235, 225));
+    QCOMPARE(img.pixelColor(3, 3), QColor(10, 20, 30));
+    QCOMPARE(img.pixelColor(24, 24), QColor(10, 20, 30));
+
+    // Second render on a fresh canvas with the same pixmap/selection must use
+    // cache and produce the same result, and moving must invalidate the cache.
+    QPixmap out2(40, 40);
+    out2.setDevicePixelRatio(2.0);
+    out2.fill(QColor(10, 20, 30));
+    QPainter painter2(&out2);
+    tool.process(painter2, out2);
+    painter2.end();
+    QCOMPARE(out2.toImage().pixelColor(23, 23), QColor(245, 235, 225));
+
+    tool.move(QPoint(4, 4));
+    QPixmap out3(40, 40);
+    out3.setDevicePixelRatio(2.0);
+    out3.fill(QColor(10, 20, 30));
+    QPainter painter3(&out3);
+    tool.process(painter3, out3);
+    painter3.end();
+    QCOMPARE(out3.toImage().pixelColor(4, 4), QColor(10, 20, 30));
+    QCOMPARE(out3.toImage().pixelColor(27, 27), QColor(245, 235, 225));
+}
+
+void SlickShotTests::testScreenGrabberNullScreenGuard()
+{
+    ScreenGrabber grabber;
+    bool ok = true;
+    QPixmap p = grabber.grabScreen(nullptr, ok);
+    QVERIFY(!ok);
+    QVERIFY(p.isNull());
+    QVERIFY(grabber.screenGeometry(nullptr).isNull());
 }
 
 #if defined(Q_OS_WIN)

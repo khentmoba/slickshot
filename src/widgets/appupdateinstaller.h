@@ -5,6 +5,8 @@
 #include <QCryptographicHash>
 #include <QFile>
 #include <QObject>
+#include <QPointer>
+#include <QTemporaryDir>
 
 #include <memory>
 
@@ -40,11 +42,16 @@ private:
     QNetworkAccessManager* m_network;
     QNetworkReply* m_reply;
     QProgressDialog* m_progress;
+    std::unique_ptr<QTemporaryDir> m_tempDir;
     std::unique_ptr<QFile> m_installerFile;
     QCryptographicHash m_hash;
     QString m_expectedSha256;
     QString m_installerPath;
+    qint64 m_downloadedBytes;
     bool m_canceled;
     bool m_writeError;
     bool m_redirectBlocked;
+    bool m_sizeExceeded;
+
+    static QPointer<AppUpdateInstaller> s_activeInstaller;
 };

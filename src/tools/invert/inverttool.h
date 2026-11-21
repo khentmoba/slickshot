@@ -5,6 +5,8 @@
 
 #include "tools/abstracttwopointtool.h"
 
+#include <QImage>
+
 class InvertTool : public AbstractTwoPointTool
 {
     Q_OBJECT
@@ -27,4 +29,28 @@ protected:
 
 public slots:
     void pressed(CaptureContext& context) override;
+    void drawMove(const QPoint& p) override;
+    void drawMoveWithAdjustment(const QPoint& p) override;
+    void move(const QPoint& pos) override;
+
+private:
+    struct EffectKey
+    {
+        QRect selection;
+        qint64 pixmapKey = 0;
+        qreal devicePixelRatio = 1.0;
+
+        bool operator==(const EffectKey& other) const
+        {
+            return selection == other.selection &&
+                   pixmapKey == other.pixmapKey &&
+                   qFuzzyCompare(devicePixelRatio, other.devicePixelRatio);
+        }
+    };
+
+    void invalidateCache();
+
+    EffectKey m_effectKey;
+    QImage m_cachedEffect;
+    bool m_effectValid = false;
 };

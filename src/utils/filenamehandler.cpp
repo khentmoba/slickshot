@@ -116,6 +116,29 @@ QString FileNameHandler::parseFilename(const QString& name)
             return {};
         }
 #if defined(Q_OS_WIN)
+        // Windows forbids <>"|?* in file and directory names, and disallows
+        // components ending in spaces or dots.
+        for (int i = 0; i < part.size(); ++i) {
+            switch (part.at(i).unicode()) {
+                case '<':
+                case '>':
+                case '"':
+                case '|':
+                case '?':
+                case '*':
+                    part[i] = QLatin1Char('_');
+                    break;
+                default:
+                    break;
+            }
+        }
+        while (part.endsWith(QLatin1Char(' ')) ||
+               part.endsWith(QLatin1Char('.'))) {
+            part.chop(1);
+        }
+        if (part.isEmpty()) {
+            return {};
+        }
         // A bare reserved device name is not a usable path component on
         // Windows.
         if (isWindowsReservedName(part)) {

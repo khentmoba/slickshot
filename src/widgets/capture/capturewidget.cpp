@@ -95,7 +95,7 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
   , m_clipboardWorkaroundDone(false)
 
 {
-    m_undoStack.setUndoLimit(ConfigHandler().undoLimit());
+    m_undoStack.setUndoLimit(m_config.undoLimit());
     m_context.circleCount = 1;
 
     // Base config of the widget
@@ -186,7 +186,7 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
             windowHandle()->setScreen(selectedScreen);
         }
 #elif defined(Q_OS_MACOS)
-        if (!ConfigHandler().useNativeFullscreen()) {
+        if (!m_config.useNativeFullscreen()) {
             setWindowFlags(Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint |
                            Qt::Tool);
         }
@@ -394,7 +394,7 @@ void CaptureWidget::initButtons()
     // Add all buttons but hide those that were disabled in the Interface config
     // This will allow keyboard shortcuts for those buttons to work
     for (CaptureTool::Type t : allButtonTypes) {
-        auto* b = new CaptureToolButton(t, this);
+        auto* b = new CaptureToolButton(t, this, &m_config);
         b->setColor(m_uiColor);
         b->hide();
         // must be enabled for SelectionWidget's eventFilter to work correctly
@@ -410,7 +410,7 @@ void CaptureWidget::initButtons()
             default:
                 // Set shortcuts for a tool
                 QString shortcut =
-                  ConfigHandler().shortcut(QVariant::fromValue(t).toString());
+                  m_config.shortcut(QVariant::fromValue(t).toString());
                 if (!shortcut.isEmpty()) {
                     auto shortcuts = newShortcut(shortcut, this, nullptr);
                     for (auto* sc : shortcuts) {
@@ -531,19 +531,19 @@ void CaptureWidget::initHelpMessage()
         }
         auto* tool = m_tools[toolType];
         QString shortcut =
-          ConfigHandler().shortcut(QVariant::fromValue(toolType).toString());
+          m_config.shortcut(QVariant::fromValue(toolType).toString());
         shortcut.replace("Return", "Enter");
         if (!shortcut.isEmpty()) {
             keyMap << std::pair(shortcut, tool->description());
         }
     }
-    QString selectAllShortcut = ConfigHandler().shortcut("TYPE_SELECT_ALL");
+    QString selectAllShortcut = m_config.shortcut("TYPE_SELECT_ALL");
     if (!selectAllShortcut.isEmpty()) {
         keyMap << std::pair(selectAllShortcut, tr("Select entire screen"));
     }
     keyMap << std::pair(tr("Mouse Wheel"), tr("Change tool size"));
     keyMap << std::pair(tr("Right Click"), tr("Show color picker"));
-    keyMap << std::pair(ConfigHandler().shortcut("TYPE_TOGGLE_PANEL"),
+    keyMap << std::pair(m_config.shortcut("TYPE_TOGGLE_PANEL"),
                         tr("Open side panel"));
     keyMap << std::pair(tr("Esc"), tr("Exit"));
 
@@ -1111,7 +1111,7 @@ void CaptureWidget::mouseReleaseEvent(QMouseEvent* e)
         m_colorPicker->setNewColor();
         m_colorPicker->hide();
         if (!m_context.color.isValid()) {
-            m_context.color = ConfigHandler().drawColor();
+            m_context.color = m_config.drawColor();
             m_panel->show();
         }
     } else if (m_mouseIsClicked) {
@@ -1328,7 +1328,7 @@ void CaptureWidget::initPanel()
     // coords
     QRect panelRect = rect();
 
-    if (ConfigHandler().showSidePanelButton()) {
+    if (m_config.showSidePanelButton()) {
         auto* panelToggleButton =
           new OrientablePushButton(tr("Tool Settings"), this);
         makeChild(panelToggleButton);
@@ -1424,7 +1424,7 @@ void CaptureWidget::initPanel()
 #if !defined(DISABLE_UPDATE_CHECKER)
 void CaptureWidget::showAppUpdateNotification(const AppUpdateInfo& info)
 {
-    if (!ConfigHandler().checkForUpdates()) {
+    if (!m_config.checkForUpdates()) {
         // option check for updates disabled
         return;
     }
@@ -1524,9 +1524,9 @@ void CaptureWidget::setState(CaptureToolButton* b)
             m_activeButton->setChecked(false);
             m_activeButton = nullptr;
         }
-        m_context.toolSize = ConfigHandler().toolSize(activeButtonToolType());
+        m_context.toolSize = m_config.toolSize(activeButtonToolType());
         emit toolSizeChanged(m_context.toolSize);
-        m_context.color = ConfigHandler().toolColor(activeButtonToolType());
+        m_context.color = m_config.toolColor(activeButtonToolType());
         emit colorChanged(m_context.color);
         updateCursor();
         updateSelectionState();
@@ -1778,71 +1778,68 @@ void CaptureWidget::removeToolObject(int index)
 void CaptureWidget::initShortcuts()
 {
     newShortcut(
-      QKeySequence(ConfigHandler().shortcut("TYPE_UNDO")), this, SLOT(undo()));
+      QKeySequence(m_config.shortcut("TYPE_UNDO")), this, SLOT(undo()));
 
     newShortcut(
-      QKeySequence(ConfigHandler().shortcut("TYPE_REDO")), this, SLOT(redo()));
+      QKeySequence(m_config.shortcut("TYPE_REDO")), this, SLOT(redo()));
 
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_TOGGLE_PANEL")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_TOGGLE_PANEL")),
                 this,
                 SLOT(togglePanel()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_GRAB_COLOR")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_GRAB_COLOR")),
                 this,
                 SLOT(startColorGrab()));
 
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_RESIZE_LEFT")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_RESIZE_LEFT")),
                 m_selection,
                 SLOT(resizeLeft()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_RESIZE_RIGHT")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_RESIZE_RIGHT")),
                 m_selection,
                 SLOT(resizeRight()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_RESIZE_UP")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_RESIZE_UP")),
                 m_selection,
                 SLOT(resizeUp()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_RESIZE_DOWN")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_RESIZE_DOWN")),
                 m_selection,
                 SLOT(resizeDown()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_SYM_RESIZE_LEFT")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_SYM_RESIZE_LEFT")),
                 m_selection,
                 SLOT(symResizeLeft()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_SYM_RESIZE_RIGHT")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_SYM_RESIZE_RIGHT")),
                 m_selection,
                 SLOT(symResizeRight()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_SYM_RESIZE_UP")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_SYM_RESIZE_UP")),
                 m_selection,
                 SLOT(symResizeUp()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_SYM_RESIZE_DOWN")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_SYM_RESIZE_DOWN")),
                 m_selection,
                 SLOT(symResizeDown()));
 
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_MOVE_LEFT")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_MOVE_LEFT")),
                 m_selection,
                 SLOT(moveLeft()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_MOVE_RIGHT")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_MOVE_RIGHT")),
                 m_selection,
                 SLOT(moveRight()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_MOVE_UP")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_MOVE_UP")),
                 m_selection,
                 SLOT(moveUp()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_MOVE_DOWN")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_MOVE_DOWN")),
                 m_selection,
                 SLOT(moveDown()));
 
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_CANCEL")),
+    newShortcut(
+      QKeySequence(m_config.shortcut("TYPE_CANCEL")), this, SLOT(cancel()));
+
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_DELETE_CURRENT_TOOL")),
                 this,
-                SLOT(cancel()));
+                SLOT(deleteCurrentTool()));
 
-    newShortcut(
-      QKeySequence(ConfigHandler().shortcut("TYPE_DELETE_CURRENT_TOOL")),
-      this,
-      SLOT(deleteCurrentTool()));
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_COMMIT_CURRENT_TOOL")),
+                this,
+                SLOT(commitCurrentTool()));
 
-    newShortcut(
-      QKeySequence(ConfigHandler().shortcut("TYPE_COMMIT_CURRENT_TOOL")),
-      this,
-      SLOT(commitCurrentTool()));
-
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_SELECT_ALL")),
+    newShortcut(QKeySequence(m_config.shortcut("TYPE_SELECT_ALL")),
                 this,
                 SLOT(selectAll()));
 

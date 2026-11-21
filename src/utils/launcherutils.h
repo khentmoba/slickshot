@@ -2,6 +2,10 @@
 
 #pragma once
 
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QString>
@@ -97,6 +101,54 @@ inline QStringList commandArguments(const QString& command,
     }
     arguments.prepend(program);
     return arguments;
+}
+
+/**
+ * Dedicated subfolder inside the user temp directory for temporary "Open With"
+ * screenshot files, keeping them isolated from the shared %TEMP% root.
+ */
+inline QString openWithTempDir()
+{
+    return QDir::temp().filePath(QStringLiteral("SlickShot-openwith"));
+}
+
+/**
+ * Choose a safe working directory for launching an external "Open With"
+ * program, avoiding %TEMP% where untrusted DLLs may reside.
+ */
+inline QString safeWorkingDirectory(const QString& program)
+{
+    const QFileInfo fi(program);
+    if (fi.isAbsolute() && fi.dir().exists()) {
+        return fi.absolutePath();
+    }
+    return QDir::homePath();
+}
+
+/**
+ * Remove stale temporary screenshot files left behind in the "Open With"
+ * folder (for example when SlickShot exited before the cleanup timer fired).
+ */
+inline int cleanupStaleOpenWithFiles(const QString& dirPath,
+                                     qint64 maxAgeSeconds = 60)
+{
+    QDir dir(dirPath);
+    if (!dir.exists()) {
+        return 0;
+    }
+    const QDateTime cutoff =
+      QDateTime::currentDateTimeUtc().addSecs(-maxAgeSeconds);
+    int removed = 0;
+    const QFileInfoList entries = dir.entryInfoList(
+      QStringList{ QStringLiteral("*.png") }, QDir::Files | QDir::NoSymLinks);
+    for (const QFileInfo& entry : entries) {
+        if (entry.lastModified().toUTC() <= cutoff) {
+            if (QFile::remove(entry.absoluteFilePath())) {
+                ++removed;
+            }
+        }
+    }
+    return removed;
 }
 
 } // namespace launcherutils

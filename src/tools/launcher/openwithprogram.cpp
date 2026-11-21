@@ -34,14 +34,22 @@ constexpr int kOpenWithTempCleanupMs = 60 * 1000;
 void showOpenWithMenu(const QPixmap& capture)
 {
 #if defined(Q_OS_WIN)
-    QString tempFile =
-      FileNameHandler().properScreenshotPath(QDir::tempPath(), "png");
+    const QString openWithDir = launcherutils::openWithTempDir();
+    if (!QDir().mkpath(openWithDir)) {
+        QMessageBox::about(nullptr,
+                           QObject::tr("Error"),
+                           QObject::tr("Unable to write in ") +
+                             QDir::toNativeSeparators(openWithDir));
+        return;
+    }
+    const QString tempFile =
+      FileNameHandler().properScreenshotPath(openWithDir, "png");
     bool ok = capture.save(tempFile);
     if (!ok) {
         QMessageBox::about(nullptr,
                            QObject::tr("Error"),
-                           QObject::tr("Unable to write in") +
-                             QDir::tempPath());
+                           QObject::tr("Unable to write in ") +
+                             QDir::toNativeSeparators(openWithDir));
         return;
     }
 
@@ -52,7 +60,9 @@ void showOpenWithMenu(const QPixmap& capture)
         if (!arguments.isEmpty()) {
             const QString program = arguments.first();
             const bool launched = QProcess::startDetached(
-              program, arguments.mid(1), QFileInfo(tempFile).absolutePath());
+              program,
+              arguments.mid(1),
+              launcherutils::safeWorkingDirectory(program));
             if (launched) {
                 // Give the external application time to open the file.
                 QTimer::singleShot(kOpenWithTempCleanupMs,
@@ -65,12 +75,18 @@ void showOpenWithMenu(const QPixmap& capture)
                            QObject::tr("Unable to launch application."));
     }
 
-    OPENASINFO info;
-    auto wStringFile = tempFile.replace("/", "\\").toStdWString();
+    OPENASINFO info{};
+    const auto wStringFile = QDir::toNativeSeparators(tempFile).toStdWString();
     info.pcszFile = wStringFile.c_str();
     info.pcszClass = nullptr;
     info.oaifInFlags = OAIF_ALLOW_REGISTRATION | OAIF_EXEC;
-    SHOpenWithDialog(nullptr, &info);
+    const HRESULT hr = SHOpenWithDialog(nullptr, &info);
+    if (SUCCEEDED(hr)) {
+        QTimer::singleShot(kOpenWithTempCleanupMs,
+                           [tempFile]() { QFile::remove(tempFile); });
+    } else {
+        QFile::remove(tempFile);
+    }
 #else
     auto* w = new AppLauncherWidget(capture);
     w->show();
