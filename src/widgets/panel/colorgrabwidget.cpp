@@ -68,6 +68,7 @@ void ColorGrabWidget::startGrabbing()
         return;
     }
     m_grabActive = true;
+    m_color = getColorAtPoint(cursorPos());
     // NOTE: grabMouse() would prevent move events being received
     // With this method we just need to make sure that mouse press and release
     // events get consumed before they reach their target widget.
@@ -151,7 +152,8 @@ bool ColorGrabWidget::eventFilter(QObject*, QEvent* event)
         }
         auto* e = static_cast<QMouseEvent*>(event);
         if (e->button() == Qt::LeftButton && m_extraZoomActive) {
-            emit colorGrabbed(getColorAtPoint(cursorPos()));
+            m_color = getColorAtPoint(cursorPos());
+            emit colorGrabbed(m_color);
             finalize();
         }
         return true;

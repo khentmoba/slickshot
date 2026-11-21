@@ -61,17 +61,8 @@ QString openWithTempDirPath()
 
 void sweepStaleTempFiles()
 {
-    QDir dir(openWithTempDirPath());
-    if (!dir.exists()) {
-        return;
-    }
-    const QDateTime now = QDateTime::currentDateTime();
-    const QFileInfoList files = dir.entryInfoList(QDir::Files);
-    for (const QFileInfo& info : files) {
-        if (info.lastModified().secsTo(now) > kStaleAgeSecs) {
-            QFile::remove(info.absoluteFilePath());
-        }
-    }
+    launcherutils::cleanupStaleOpenWithFiles(openWithTempDirPath(),
+                                             kStaleAgeSecs);
 }
 
 } // namespace
@@ -193,8 +184,8 @@ void AppLauncherWidget::launch(const QModelIndex& index)
             removeTempFile();
             return;
         }
+        bool ok = m_pixmap.save(m_tempFile, "PNG");
         m_tempFile->close();
-        bool ok = m_pixmap.save(m_tempFile->fileName());
         if (!ok) {
             QMessageBox::about(
               this, tr("Error"), tr("Unable to write in") + QDir::tempPath());
@@ -214,17 +205,46 @@ void AppLauncherWidget::launch(const QModelIndex& index)
 #else
     QStringList prog_args = QProcess::splitCommand(command);
 #endif
-    // no quotes because it is going in an array!
-    static const QRegularExpression regexp("(\\%.)");
-    if (command.contains("%")) {
-        // but that means we need to substitute IN the array not the string!
-        for (auto& i : prog_args) {
-            if (i.contains("%"))
-                i.replace(regexp, tempFilePath);
+    // Expand standard .desktop file placeholders (%f/%F/%u/%U) while
+    // unescaping %% and stripping metadata codes (%i/%c/%k).
+    bool replaced = false;
+    QStringList expandedArgs;
+    expandedArgs.reserve(prog_args.size() + 1);
+    for (QString arg : prog_args) {
+        if (arg == QLatin1String("%i") || arg == QLatin1String("%c") ||
+            arg == QLatin1String("%k")) {
+            continue;
         }
-    } else {
-        // we really should append the file name if there
-        prog_args.append(tempFilePath); // were no replacements
+        QString out;
+        out.reserve(arg.size());
+        for (int i = 0; i < arg.size(); ++i) {
+            if (arg.at(i) == QLatin1Char('%') && i + 1 < arg.size()) {
+                const QChar code = arg.at(i + 1);
+                if (code == QLatin1Char('%')) {
+                    out.append(QLatin1Char('%'));
+                    ++i;
+                    continue;
+                }
+                if (code == QLatin1Char('f') || code == QLatin1Char('F') ||
+                    code == QLatin1Char('u') || code == QLatin1Char('U')) {
+                    out.append(tempFilePath);
+                    replaced = true;
+                    ++i;
+                    continue;
+                }
+                if (code == QLatin1Char('i') || code == QLatin1Char('c') ||
+                    code == QLatin1Char('k')) {
+                    ++i;
+                    continue;
+                }
+            }
+            out.append(arg.at(i));
+        }
+        expandedArgs.append(out);
+    }
+    prog_args = std::move(expandedArgs);
+    if (!replaced) {
+        prog_args.append(tempFilePath);
     }
     if (prog_args.isEmpty() || prog_args.at(0).trimmed().isEmpty()) {
         removeTempFile();

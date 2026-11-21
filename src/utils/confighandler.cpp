@@ -433,9 +433,12 @@ void ConfigHandler::ensureStartupLaunch(const bool start)
             QString quotedPath = QStringLiteral("\"%1\"").arg(app_path);
             bootUpSettings.setValue("SlickShot", quotedPath);
 
-            // set application workdir
+            // set application workdir and default executable path
             bootUpPath.beginGroup("flameshot.exe");
-            bootUpPath.setValue("Path", QCoreApplication::applicationDirPath());
+            bootUpPath.setValue("Default", app_path);
+            bootUpPath.setValue(
+              "Path",
+              QDir::toNativeSeparators(QCoreApplication::applicationDirPath()));
             bootUpPath.endGroup();
         }
     } else {

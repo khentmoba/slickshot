@@ -22,4 +22,5 @@ private:
     CaptureToolObjects m_captureToolObjects;
     CaptureToolObjects m_captureToolObjectsBackup;
     CaptureWidget* m_captureWidget;
+    bool m_skipFirstRedo{ true };
 };

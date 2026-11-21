@@ -266,6 +266,7 @@ int main(int argc, char* argv[])
             // quitting
             QByteArray data;
             QDataStream stream(&data, QIODevice::WriteOnly);
+            stream.setVersion(QDataStream::Qt_6_0);
             stream << QStringLiteral("requestCapture");
             kdsa.sendMessage(data);
 #endif
@@ -321,16 +322,16 @@ int main(int argc, char* argv[])
     }
 
     if (isScreenclipUri) {
-        new QApplication(argc, argv);
+        QApplication app(argc, argv);
 #ifdef USE_KDSINGLEAPPLICATION
         auto kdsa =
           KDSingleApplication(QStringLiteral("org.flameshot.Flameshot"));
         if (!kdsa.isPrimaryInstance()) {
             QByteArray data;
             QDataStream stream(&data, QIODevice::WriteOnly);
+            stream.setVersion(QDataStream::Qt_6_0);
             stream << QStringLiteral("requestCapture");
             kdsa.sendMessage(data);
-            delete qApp;
             return 0;
         }
 #endif
@@ -352,7 +353,7 @@ int main(int argc, char* argv[])
 
         CaptureRequest req(CaptureRequest::GRAPHICAL_MODE);
         flameshot->requestCapture(req);
-        return qApp->exec();
+        return app.exec();
     }
 #endif
 
@@ -569,6 +570,7 @@ int main(int argc, char* argv[])
         if (!ConfigHandler().allowMultipleGuiInstances()) {
             auto* mutex = guiMutexLock();
             if (!mutex) {
+                delete qApp;
                 return 1;
             }
             QObject::connect(

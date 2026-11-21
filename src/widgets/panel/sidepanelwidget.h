@@ -45,7 +45,7 @@ public slots:
     void startColorGrab();
 
 private slots:
-    void onColorGrabFinished();
+    void onColorGrabFinished(const QColor& color);
     void onColorGrabAborted();
     void onTemporaryColorUpdated(const QColor& color);
 

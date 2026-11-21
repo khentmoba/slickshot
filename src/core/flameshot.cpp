@@ -696,6 +696,9 @@ void Flameshot::exportCapture(const QPixmap& capture,
         }
 
         ImgUploaderBase* widget = ImgUploaderManager().uploader(capture);
+        if (widget == nullptr) {
+            return;
+        }
         widget->show();
         widget->activateWindow();
         // NOTE: lambda can't capture 'this' because it might be destroyed later

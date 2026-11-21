@@ -289,6 +289,10 @@ bool GlobalShortcutFilter::nativeEventFilter(const QByteArray& eventType,
     Q_UNUSED(result)
 
 #if defined(Q_OS_WIN)
+    if (eventType != QByteArrayLiteral("windows_generic_MSG") &&
+        eventType != QByteArrayLiteral("windows_dispatcher_MSG")) {
+        return false;
+    }
     MSG* msg = static_cast<MSG*>(message);
     if (msg->message == WM_KILLFOCUS) {
         // Focus loss means a matching keyup may never arrive.

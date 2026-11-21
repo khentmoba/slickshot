@@ -28,73 +28,53 @@ inline QStringList commandArguments(const QString& command,
         return {};
     }
 
-    const int placeholderPos = trimmed.indexOf(QLatin1Char('%'));
     QString program;
     QStringList arguments;
     bool substituted = false;
 
-    auto splitPrefix = [](const QString& text,
-                          QString& outProgram,
-                          QStringList& outArgs) {
-        if (text.startsWith(QLatin1Char('"'))) {
-            const int closingQuote = text.indexOf(QLatin1Char('"'), 1);
-            if (closingQuote > 0) {
-                outProgram = text.mid(1, closingQuote - 1);
-                outArgs =
-                  QProcess::splitCommand(text.mid(closingQuote + 1).trimmed());
-            } else {
-                outProgram = text.mid(1);
-            }
-        } else if (text.contains(QLatin1Char('/')) ||
-                   text.contains(QLatin1Char('\\'))) {
-            // A Windows path may contain spaces. Split off the first flag so
-            // it is not swallowed into the program name.
-            int splitAt = -1;
-            for (int i = 1; i < text.size() - 1; ++i) {
-                if (text.at(i) == QLatin1Char(' ') &&
-                    (text.at(i + 1) == QLatin1Char('-') ||
-                     text.at(i + 1) == QLatin1Char('/'))) {
-                    splitAt = i;
-                    break;
-                }
-            }
-            if (splitAt > 0) {
-                outProgram = text.left(splitAt);
-                outArgs = QProcess::splitCommand(text.mid(splitAt).trimmed());
-            } else {
-                outProgram = text;
-            }
+    if (trimmed.startsWith(QLatin1Char('"'))) {
+        const int closingQuote = trimmed.indexOf(QLatin1Char('"'), 1);
+        if (closingQuote > 0) {
+            program = trimmed.mid(1, closingQuote - 1);
+            arguments =
+              QProcess::splitCommand(trimmed.mid(closingQuote + 1).trimmed());
         } else {
-            const QStringList parts = QProcess::splitCommand(text);
-            if (!parts.isEmpty()) {
-                outProgram = parts.first();
-                outArgs = parts.mid(1);
+            program = trimmed.mid(1);
+        }
+    } else if (trimmed.contains(QLatin1Char('/')) ||
+               trimmed.contains(QLatin1Char('\\'))) {
+        // A Windows path may contain spaces. Split off the first flag or
+        // standalone placeholder token so it is not swallowed into the program
+        // name.
+        int splitAt = -1;
+        for (int i = 1; i < trimmed.size() - 1; ++i) {
+            if (trimmed.at(i) == QLatin1Char(' ') &&
+                (trimmed.at(i + 1) == QLatin1Char('-') ||
+                 trimmed.at(i + 1) == QLatin1Char('/') ||
+                 trimmed.at(i + 1) == QLatin1Char('%'))) {
+                splitAt = i;
+                break;
             }
         }
-    };
-
-    if (placeholderPos >= 0) {
-        const QString prefix = trimmed.left(placeholderPos).trimmed();
-        splitPrefix(prefix, program, arguments);
-
-        arguments.append(QProcess::splitCommand(trimmed.mid(placeholderPos)));
-        static const QRegularExpression placeholder(QStringLiteral("%1?"));
-        for (QString& argument : arguments) {
-            const QString before = argument;
-            argument.replace(placeholder, filePath);
-            substituted = substituted || argument != before;
+        if (splitAt > 0) {
+            program = trimmed.left(splitAt);
+            arguments = QProcess::splitCommand(trimmed.mid(splitAt).trimmed());
+        } else {
+            program = trimmed;
         }
     } else {
-#if defined(Q_OS_WIN)
-        splitPrefix(trimmed, program, arguments);
-#else
         const QStringList parts = QProcess::splitCommand(trimmed);
-        if (parts.isEmpty()) {
-            return {};
+        if (!parts.isEmpty()) {
+            program = parts.first();
+            arguments = parts.mid(1);
         }
-        program = parts.first();
-        arguments = parts.mid(1);
-#endif
+    }
+
+    static const QRegularExpression placeholder(QStringLiteral("%1?"));
+    for (QString& argument : arguments) {
+        const QString before = argument;
+        argument.replace(placeholder, filePath);
+        substituted = substituted || argument != before;
     }
 
     if (program.isEmpty()) {

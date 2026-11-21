@@ -204,11 +204,13 @@ void SidePanelWidget::startColorGrab()
     m_colorGrabber->startGrabbing();
 }
 
-void SidePanelWidget::onColorGrabFinished()
+void SidePanelWidget::onColorGrabFinished(const QColor& color)
 {
     finalizeGrab();
-    m_color = m_colorGrabber->color();
-    emit colorChanged(m_color);
+    if (color.isValid()) {
+        m_color = color;
+        emit colorChanged(m_color);
+    }
 }
 
 void SidePanelWidget::onColorGrabAborted()

@@ -193,8 +193,13 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
                            Qt::Tool);
         }
         QScreen* currentScreen = QGuiAppCurrentScreen().currentScreen();
-        move(currentScreen->geometry().x(), currentScreen->geometry().y());
-        resize(currentScreen->size());
+        if (currentScreen == nullptr) {
+            currentScreen = QGuiApplication::primaryScreen();
+        }
+        if (currentScreen != nullptr) {
+            move(currentScreen->geometry().x(), currentScreen->geometry().y());
+            resize(currentScreen->size());
+        }
 // LINUX
 #else
 // Call cmake with -DFLAMESHOT_DEBUG_CAPTURE=ON to enable easier debugging
@@ -215,12 +220,14 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
         if (selectedScreen == nullptr) {
             selectedScreen = QGuiApplication::primaryScreen();
         }
-        QRect screenGeom = selectedScreen->geometry();
-        move(screenGeom.topLeft());
-        resize(screenGeom.size());
+        if (selectedScreen != nullptr) {
+            QRect screenGeom = selectedScreen->geometry();
+            move(screenGeom.topLeft());
+            resize(screenGeom.size());
 
-        if (selectedScreen != nullptr && windowHandle()) {
-            windowHandle()->setScreen(selectedScreen);
+            if (windowHandle()) {
+                windowHandle()->setScreen(selectedScreen);
+            }
         }
         m_selectedScreen = selectedScreen;
 #endif
@@ -367,7 +374,9 @@ CaptureWidget::~CaptureWidget()
                 setLastRegion(selection);
             }
         }
-        emit Flameshot::instance()->captureFailed();
+        if (!m_captureFailed) {
+            emit Flameshot::instance()->captureFailed();
+        }
     }
 }
 
@@ -2581,15 +2590,41 @@ void CaptureWidget::drawErrorMessage(const QString& msg, QPainter* painter)
 
 void CaptureWidget::drawInactiveRegion(QPainter* painter)
 {
-    QColor overlayColor(0, 0, 0, m_opacity);
-    painter->setBrush(overlayColor);
-    QRect r;
-    if (m_selection->isVisible()) {
-        r = m_selection->geometry().normalized();
+    const QColor overlayColor(0, 0, 0, m_opacity);
+    const QRect full = rect();
+    if (!m_selection || !m_selection->isVisible()) {
+        painter->fillRect(full, overlayColor);
+        return;
     }
-    QRegion grey(rect());
-    grey = grey.subtracted(r);
 
-    painter->setClipRegion(grey);
-    painter->drawRect(-1, -1, rect().width() + 1, rect().height() + 1);
+    const QRect r = m_selection->geometry().normalized().intersected(full);
+    if (r.isEmpty()) {
+        painter->fillRect(full, overlayColor);
+        return;
+    }
+
+    // Top, bottom, left, and right strips around the selection without
+    // allocating a QRegion or stroking a border.
+    if (r.top() > full.top()) {
+        painter->fillRect(
+          full.left(), full.top(), full.width(), r.top() - full.top(), overlayColor);
+    }
+    if (r.bottom() < full.bottom()) {
+        painter->fillRect(full.left(),
+                          r.bottom() + 1,
+                          full.width(),
+                          full.bottom() - r.bottom(),
+                          overlayColor);
+    }
+    if (r.left() > full.left()) {
+        painter->fillRect(
+          full.left(), r.top(), r.left() - full.left(), r.height(), overlayColor);
+    }
+    if (r.right() < full.right()) {
+        painter->fillRect(r.right() + 1,
+                          r.top(),
+                          full.right() - r.right(),
+                          r.height(),
+                          overlayColor);
+    }
 }

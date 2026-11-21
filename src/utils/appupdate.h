@@ -23,6 +23,9 @@ AppUpdateInfo releaseInfo(const QJsonObject& release);
 // assets. Used both when parsing release metadata and before downloading.
 bool isTrustedAssetUrl(const QString& url);
 
+// True only for an HTTPS release page URL belonging to SlickShot on GitHub.
+bool isTrustedReleasePageUrl(const QString& url);
+
 // True when appPath is inside installRoot and the release has both the
 // installer and its checksum.
 bool canInstallInPlaceForPaths(const AppUpdateInfo& info,

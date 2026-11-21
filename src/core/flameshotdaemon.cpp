@@ -332,12 +332,19 @@ void FlameshotDaemon::getLatestAvailableVersion()
             reply,
             [reply](const QUrl& url) {
                 const QString host = url.host().toLower();
+                const QString path = url.path();
                 const bool trusted =
                   url.isValid() &&
                   url.scheme().compare(QLatin1String("https"),
                                        Qt::CaseInsensitive) == 0 &&
-                  (host == QLatin1String("api.github.com") ||
-                   host == QLatin1String("github.com"));
+                  ((host == QLatin1String("api.github.com") &&
+                    path.startsWith(
+                      QLatin1String("/repos/khentmoba/slickshot/releases"),
+                      Qt::CaseInsensitive)) ||
+                   (host == QLatin1String("github.com") &&
+                    path.startsWith(
+                      QLatin1String("/khentmoba/slickshot/releases"),
+                      Qt::CaseInsensitive)));
                 if (trusted) {
                     emit reply->redirectAllowed();
                 } else {
@@ -496,22 +503,32 @@ void FlameshotDaemon::attachScreenshotToClipboard(const QPixmap& pixmap)
 
 void FlameshotDaemon::attachPin(const QByteArray& data)
 {
+    if (data.isEmpty() || data.size() > kMaxIpcMessageBytes) {
+        return;
+    }
     QDataStream stream(data);
+    stream.setVersion(kIpcStreamVersion);
     QPixmap pixmap;
     QRect geometry;
 
-    readPin(stream, pixmap, geometry);
-
-    attachPin(pixmap, geometry);
+    if (readPin(stream, pixmap, geometry)) {
+        attachPin(pixmap, geometry);
+    }
 }
 
 void FlameshotDaemon::attachScreenshotToClipboard(const QByteArray& screenshot)
 {
+    if (screenshot.isEmpty() || screenshot.size() > kMaxIpcMessageBytes) {
+        return;
+    }
     QDataStream stream(screenshot);
+    stream.setVersion(kIpcStreamVersion);
     QPixmap p;
     stream >> p;
 
-    attachScreenshotToClipboard(p);
+    if (stream.status() == QDataStream::Ok && !p.isNull()) {
+        attachScreenshotToClipboard(p);
+    }
 }
 
 void FlameshotDaemon::attachTextToClipboard(const QString& text,

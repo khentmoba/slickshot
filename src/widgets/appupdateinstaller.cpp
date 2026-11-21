@@ -38,7 +38,7 @@ void AppUpdateInstaller::openUpdate(const AppUpdateInfo& info)
     if (!AppUpdate::isTrustedAssetUrl(info.installerUrl) ||
         !AppUpdate::isTrustedAssetUrl(info.checksumUrl) ||
         !AppUpdate::canInstallInPlace(info)) {
-        if (!info.pageUrl.isEmpty()) {
+        if (AppUpdate::isTrustedReleasePageUrl(info.pageUrl)) {
             QDesktopServices::openUrl(QUrl(info.pageUrl));
         }
         return;

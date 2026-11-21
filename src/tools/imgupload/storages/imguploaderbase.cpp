@@ -202,9 +202,13 @@ void ImgUploaderBase::deleteCurrentImage()
 void ImgUploaderBase::saveScreenshotToFilesystem()
 {
     if (!saveToFilesystemGUI(m_pixmap)) {
-        m_notification->showMessage(
-          tr("Unable to save the screenshot to disk."));
+        if (m_notification != nullptr) {
+            m_notification->showMessage(
+              tr("Unable to save the screenshot to disk."));
+        }
         return;
     }
-    m_notification->showMessage(tr("Screenshot saved."));
+    if (m_notification != nullptr) {
+        m_notification->showMessage(tr("Screenshot saved."));
+    }
 }

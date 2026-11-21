@@ -48,12 +48,27 @@ bool AppUpdate::isTrustedAssetUrl(const QString& value)
         return false;
     }
     const QString host = url.host().toLower();
-    // browser_download_url normally points at github.com; GitHub may redirect
-    // asset downloads to these hosts, so allow them as download origins too.
-    return host == QLatin1String("github.com") ||
-           host == QLatin1String("objects.githubusercontent.com") ||
+    if (host == QLatin1String("github.com")) {
+        return url.path().startsWith(
+          QLatin1String("/khentmoba/slickshot/releases/"), Qt::CaseInsensitive);
+    }
+    // GitHub redirects release asset downloads to these CDN hosts.
+    return host == QLatin1String("objects.githubusercontent.com") ||
            host == QLatin1String("github-releases.githubusercontent.com") ||
            host == QLatin1String("release-assets.githubusercontent.com");
+}
+
+bool AppUpdate::isTrustedReleasePageUrl(const QString& value)
+{
+    const QUrl page(value);
+    return page.isValid() &&
+           page.scheme().compare(QLatin1String("https"), Qt::CaseInsensitive) ==
+             0 &&
+           page.host().compare(QLatin1String("github.com"),
+                               Qt::CaseInsensitive) == 0 &&
+           page.path().startsWith(
+             QLatin1String("/khentmoba/slickshot/releases/"),
+             Qt::CaseInsensitive);
 }
 
 AppUpdateInfo AppUpdate::releaseInfo(const QJsonObject& release)
@@ -65,14 +80,9 @@ AppUpdateInfo AppUpdate::releaseInfo(const QJsonObject& release)
     }
 
     // Never open a release page handed to us by an untrusted response unless it
-    // is an HTTPS page on GitHub.
+    // is an HTTPS SlickShot release page on GitHub.
     const QString pageUrl = release["html_url"].toString();
-    const QUrl page(pageUrl);
-    if (page.isValid() &&
-        page.scheme().compare(QLatin1String("https"), Qt::CaseInsensitive) ==
-          0 &&
-        page.host().compare(QLatin1String("github.com"), Qt::CaseInsensitive) ==
-          0) {
+    if (isTrustedReleasePageUrl(pageUrl)) {
         info.pageUrl = pageUrl;
     }
 

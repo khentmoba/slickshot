@@ -23,8 +23,12 @@ void scaleThumbnail(QPixmap& pixmap)
 
 void clearHistoryLayout(QLayout* layout)
 {
-    while (layout->count() != 0) {
-        delete layout->takeAt(0);
+    while (QLayoutItem* item = layout->takeAt(0)) {
+        if (QWidget* w = item->widget()) {
+            w->hide();
+            w->deleteLater();
+        }
+        delete item;
     }
 }
 
@@ -87,10 +91,12 @@ void UploadHistory::addLine(const QString& path, const QString& fileName)
       this, pixmap, lastModified, url, fullFileName, unpackFileName);
 
     connect(line, &UploadLineItem::requestedDeletion, this, [=, this]() {
-        if (ui->historyContainer->count() <= 1) {
+        ui->historyContainer->removeWidget(line);
+        line->hide();
+        line->deleteLater();
+        if (ui->historyContainer->count() == 0) {
             setEmptyMessage();
         }
-        delete line;
     });
 
     ui->historyContainer->addWidget(line);

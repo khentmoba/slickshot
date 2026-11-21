@@ -272,8 +272,14 @@ void SlickShotTests::testAppUpdateTrustedHosts()
 {
     // The redirect guard reuses isTrustedAssetUrl on every hop, so the trusted
     // set is the policy that matters for both the initial URL and redirects.
-    QVERIFY(AppUpdate::isTrustedAssetUrl(
-      QStringLiteral("https://github.com/o/r/releases/download/v1/a.exe")));
+    QVERIFY(AppUpdate::isTrustedAssetUrl(QStringLiteral(
+      "https://github.com/khentmoba/slickshot/releases/download/v1/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(
+      QStringLiteral("https://github.com/other/repo/releases/download/v1/a.exe")));
+    QVERIFY(AppUpdate::isTrustedReleasePageUrl(QStringLiteral(
+      "https://github.com/khentmoba/slickshot/releases/tag/v1.0.0")));
+    QVERIFY(!AppUpdate::isTrustedReleasePageUrl(
+      QStringLiteral("https://github.com/other/repo/releases/tag/v1.0.0")));
     QVERIFY(AppUpdate::isTrustedAssetUrl(
       QStringLiteral("https://objects.githubusercontent.com/asset?token=1")));
     QVERIFY(AppUpdate::isTrustedAssetUrl(
@@ -1097,6 +1103,12 @@ void SlickShotTests::testOpenWithCommandArguments()
              QStringLiteral("C:\\Program Files\\App\\app.exe"));
     QCOMPARE(quotedNoPlaceholder.at(1), QStringLiteral("--flag"));
     QCOMPARE(quotedNoPlaceholder.at(2), path);
+
+    const QStringList inlinePlaceholder = launcherutils::commandArguments(
+      QStringLiteral("viewer --input=%1"), path);
+    QCOMPARE(inlinePlaceholder.size(), 2);
+    QCOMPARE(inlinePlaceholder.at(0), QStringLiteral("viewer"));
+    QCOMPARE(inlinePlaceholder.at(1), QStringLiteral("--input=") + path);
 }
 
 void SlickShotTests::testEffectiveDesktopPixelRatio()
