@@ -210,18 +210,29 @@ void UtilityPanel::initInternalPanel()
 void UtilityPanel::fillCaptureTools(
   const QList<QPointer<CaptureTool>>& captureToolObjects)
 {
-    int currentSelection = m_captureTools->currentRow();
-    m_captureTools->clear();
-    m_captureTools->addItem(tr("<Empty>"));
+    const int currentSelection = m_captureTools->currentRow();
+    {
+        const QSignalBlocker blocker(m_captureTools);
+        m_captureTools->clear();
+        m_captureTools->addItem(tr("<Empty>"));
 
-    for (auto toolItem : captureToolObjects) {
-        auto* item = new QListWidgetItem(
-          toolItem->icon(QColor(Qt::white), false), toolItem->info());
-        m_captureTools->addItem(item);
+        for (const auto& toolItem : captureToolObjects) {
+            if (toolItem.isNull()) {
+                continue;
+            }
+            auto* item = new QListWidgetItem(
+              toolItem->icon(QColor(Qt::white), false), toolItem->info());
+            m_captureTools->addItem(item);
+        }
+        if (currentSelection >= 0 &&
+            currentSelection < m_captureTools->count()) {
+            m_captureTools->setCurrentRow(currentSelection);
+        }
     }
-    if (currentSelection >= 0 && currentSelection < m_captureTools->count()) {
-        m_captureTools->setCurrentRow(currentSelection);
-    }
+    const int row = m_captureTools->currentRow();
+    m_buttonMoveUp->setEnabled(row > 1);
+    m_buttonMoveDown->setEnabled(row > 0 && row < m_captureTools->count() - 1);
+    m_buttonDelete->setEnabled(row > 0);
 }
 
 void UtilityPanel::setActiveLayer(int index)

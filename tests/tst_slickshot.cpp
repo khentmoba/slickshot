@@ -272,10 +272,22 @@ void SlickShotTests::testAppUpdateTrustedHosts()
 {
     // The redirect guard reuses isTrustedAssetUrl on every hop, so the trusted
     // set is the policy that matters for both the initial URL and redirects.
+    QVERIFY(AppUpdate::isTrustedInitialAssetUrl(QStringLiteral(
+      "https://github.com/khentmoba/slickshot/releases/download/v1/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedInitialAssetUrl(QStringLiteral(
+      "https://objects.githubusercontent.com/asset?token=1")));
     QVERIFY(AppUpdate::isTrustedAssetUrl(QStringLiteral(
       "https://github.com/khentmoba/slickshot/releases/download/v1/a.exe")));
     QVERIFY(!AppUpdate::isTrustedAssetUrl(
       QStringLiteral("https://github.com/other/repo/releases/download/v1/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(QStringLiteral(
+      "https://github.com/khentmoba/slickshot/releases/../../other/repo/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(QStringLiteral(
+      "https://github.com/khentmoba/slickshot/releases/%2e%2e/other/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(QStringLiteral(
+      "https://user@github.com/khentmoba/slickshot/releases/download/v1/a.exe")));
+    QVERIFY(!AppUpdate::isTrustedAssetUrl(QStringLiteral(
+      "https://github.com:8443/khentmoba/slickshot/releases/download/v1/a.exe")));
     QVERIFY(AppUpdate::isTrustedReleasePageUrl(QStringLiteral(
       "https://github.com/khentmoba/slickshot/releases/tag/v1.0.0")));
     QVERIFY(!AppUpdate::isTrustedReleasePageUrl(

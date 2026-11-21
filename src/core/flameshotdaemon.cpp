@@ -332,11 +332,21 @@ void FlameshotDaemon::getLatestAvailableVersion()
             reply,
             [reply](const QUrl& url) {
                 const QString host = url.host().toLower();
-                const QString path = url.path();
-                const bool trusted =
+                const QUrl normalized =
+                  url.adjusted(QUrl::NormalizePathSegments);
+                const QString rawPath = url.path(QUrl::FullyEncoded);
+                const QString path = normalized.path(QUrl::FullyDecoded);
+                const bool safeAuthority =
                   url.isValid() &&
                   url.scheme().compare(QLatin1String("https"),
                                        Qt::CaseInsensitive) == 0 &&
+                  url.userInfo().isEmpty() &&
+                  (url.port() == -1 || url.port() == 443) &&
+                  !rawPath.contains(QLatin1String("..")) &&
+                  !path.contains(QLatin1String("..")) &&
+                  !path.contains(QLatin1Char('\\'));
+                const bool trusted =
+                  safeAuthority &&
                   ((host == QLatin1String("api.github.com") &&
                     path.startsWith(
                       QLatin1String("/repos/khentmoba/slickshot/releases"),

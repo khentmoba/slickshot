@@ -35,11 +35,8 @@ QString toSlashes(QString path)
     return QDir::cleanPath(path);
 }
 
-} // namespace
-
-bool AppUpdate::isTrustedAssetUrl(const QString& value)
+bool hasSafeHttpsAuthority(const QUrl& url)
 {
-    const QUrl url(value);
     if (!url.isValid()) {
         return false;
     }
@@ -47,10 +44,53 @@ bool AppUpdate::isTrustedAssetUrl(const QString& value)
         0) {
         return false;
     }
+    if (!url.userInfo().isEmpty()) {
+        return false;
+    }
+    if (url.port() != -1 && url.port() != 443) {
+        return false;
+    }
+    const QString rawPath = url.path(QUrl::FullyEncoded);
+    const QString decodedPath = url.path(QUrl::FullyDecoded);
+    if (rawPath.contains(QLatin1String("..")) ||
+        decodedPath.contains(QLatin1String("..")) ||
+        decodedPath.contains(QLatin1Char('\\'))) {
+        return false;
+    }
+    return true;
+}
+
+bool hasRepoReleasePath(const QUrl& url)
+{
+    const QUrl normalized = url.adjusted(QUrl::NormalizePathSegments);
+    const QString path = normalized.path(QUrl::FullyDecoded);
+    return !path.contains(QLatin1String("..")) &&
+           path.startsWith(QLatin1String("/khentmoba/slickshot/releases/"),
+                           Qt::CaseInsensitive);
+}
+
+} // namespace
+
+bool AppUpdate::isTrustedInitialAssetUrl(const QString& value)
+{
+    const QUrl url(value);
+    if (!hasSafeHttpsAuthority(url)) {
+        return false;
+    }
+    return url.host().compare(QLatin1String("github.com"),
+                              Qt::CaseInsensitive) == 0 &&
+           hasRepoReleasePath(url);
+}
+
+bool AppUpdate::isTrustedAssetUrl(const QString& value)
+{
+    const QUrl url(value);
+    if (!hasSafeHttpsAuthority(url)) {
+        return false;
+    }
     const QString host = url.host().toLower();
     if (host == QLatin1String("github.com")) {
-        return url.path().startsWith(
-          QLatin1String("/khentmoba/slickshot/releases/"), Qt::CaseInsensitive);
+        return hasRepoReleasePath(url);
     }
     // GitHub redirects release asset downloads to these CDN hosts.
     return host == QLatin1String("objects.githubusercontent.com") ||
@@ -61,14 +101,10 @@ bool AppUpdate::isTrustedAssetUrl(const QString& value)
 bool AppUpdate::isTrustedReleasePageUrl(const QString& value)
 {
     const QUrl page(value);
-    return page.isValid() &&
-           page.scheme().compare(QLatin1String("https"), Qt::CaseInsensitive) ==
-             0 &&
+    return hasSafeHttpsAuthority(page) &&
            page.host().compare(QLatin1String("github.com"),
                                Qt::CaseInsensitive) == 0 &&
-           page.path().startsWith(
-             QLatin1String("/khentmoba/slickshot/releases/"),
-             Qt::CaseInsensitive);
+           hasRepoReleasePath(page);
 }
 
 AppUpdateInfo AppUpdate::releaseInfo(const QJsonObject& release)
@@ -93,9 +129,10 @@ AppUpdateInfo AppUpdate::releaseInfo(const QJsonObject& release)
       assetUrl(assets,
                QStringLiteral(
                  "^SlickShot-[0-9A-Za-z._+-]+-win64-setup\\.exe\\.sha256sum$"));
-    // Only accept asset URLs we are willing to download from. When either is
-    // untrusted, leave both empty so the caller falls back to the release page.
-    if (isTrustedAssetUrl(installer) && isTrustedAssetUrl(checksum)) {
+    // Initial asset URLs must live under SlickShot's GitHub releases path; CDN
+    // hosts are only accepted on redirect during download.
+    if (isTrustedInitialAssetUrl(installer) &&
+        isTrustedInitialAssetUrl(checksum)) {
         info.installerUrl = installer;
         info.checksumUrl = checksum;
     }

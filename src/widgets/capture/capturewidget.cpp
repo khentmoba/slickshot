@@ -1731,7 +1731,6 @@ void CaptureWidget::updateActiveLayer(int layer)
         pushObjectsStateToUndoStack();
     }
     drawToolsData();
-    drawObjectSelection();
     updateSelectionState();
 }
 
@@ -2278,12 +2277,13 @@ void CaptureWidget::updateMagnifierArea()
 void CaptureWidget::drawToolsData(bool drawSelection)
 {
     invalidateDragBase();
-    // TODO refactor this for performance. The objects should not all be updated
-    // at once every time
     QPixmap pixmapItem = m_context.origScreenshot;
+    m_captureToolObjects.composeRange(
+      pixmapItem, 0, m_captureToolObjects.size());
     for (const auto& toolItem : m_captureToolObjects.captureToolObjects()) {
-        processPixmapWithTool(&pixmapItem, toolItem);
-        update(paddedUpdateRect(toolItem->boundingRect()));
+        if (!toolItem.isNull()) {
+            update(paddedUpdateRect(toolItem->boundingRect()));
+        }
     }
 
     m_context.screenshot = pixmapItem;
@@ -2492,9 +2492,8 @@ void CaptureWidget::setCaptureToolObjects(
 {
     // Used for undo/redo
     m_captureToolObjects = captureToolObjects;
-    drawToolsData();
     updateLayersPanel();
-    drawObjectSelection();
+    drawToolsData();
 }
 
 void CaptureWidget::undo()

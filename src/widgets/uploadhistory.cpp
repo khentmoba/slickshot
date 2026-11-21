@@ -11,8 +11,11 @@
 
 void scaleThumbnail(QPixmap& pixmap)
 {
-    if (pixmap.height() / HISTORYPIXMAP_MAX_PREVIEW_HEIGHT >=
-        pixmap.width() / HISTORYPIXMAP_MAX_PREVIEW_WIDTH) {
+    if (pixmap.isNull()) {
+        return;
+    }
+    if (pixmap.height() * HISTORYPIXMAP_MAX_PREVIEW_WIDTH >=
+        pixmap.width() * HISTORYPIXMAP_MAX_PREVIEW_HEIGHT) {
         pixmap = pixmap.scaledToHeight(HISTORYPIXMAP_MAX_PREVIEW_HEIGHT,
                                        Qt::SmoothTransformation);
     } else {

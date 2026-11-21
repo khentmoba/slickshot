@@ -278,6 +278,13 @@ void GeneralConf::importConfiguration()
         return;
     }
 
+    QSettings candidate(fileName, QSettings::IniFormat);
+    if (candidate.status() != QSettings::NoError) {
+        QMessageBox::about(
+          this, tr("Error"), tr("Selected file is not a valid configuration."));
+        return;
+    }
+
     QSaveFile config(configPath);
     if (!config.open(QFile::WriteOnly) || config.write(raw) != raw.size() ||
         !config.commit()) {

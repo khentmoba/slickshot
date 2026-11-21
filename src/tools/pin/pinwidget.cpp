@@ -273,7 +273,10 @@ void PinWidget::updatePixmap()
       qBound(MIN_SIZE, ih * m_currentStepScaleFactor * m_scaleFactor, maxH);
 
     const QSize scaledSize = m_pixmap.size().scaled(nw, nh, aspectRatio);
-    m_displaySize = (QSizeF(scaledSize) / m_pixmap.devicePixelRatio()).toSize();
+    const QSize logicalSize =
+      (QSizeF(scaledSize) / m_pixmap.devicePixelRatio()).toSize();
+    m_displaySize =
+      QSize(qMax(1, logicalSize.width()), qMax(1, logicalSize.height()));
     renderPixmap(Qt::FastTransformation);
     adjustSize();
     m_qualityTimer.start();

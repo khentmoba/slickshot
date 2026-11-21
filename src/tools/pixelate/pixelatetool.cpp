@@ -3,6 +3,7 @@
 
 #include "pixelatetool.h"
 #include "utils/confighandler.h"
+#include "utils/geometryutils.h"
 
 #include <QApplication>
 #include <QColor>
@@ -109,8 +110,7 @@ void PixelateTool::process(QPainter& painter, const QPixmap& pixmap)
         return;
     }
     const QRect selectionScaled =
-      QRect(selection.topLeft() * pixelRatio,
-            selection.bottomRight() * pixelRatio)
+      GeometryUtils::logicalToPixmap(selection, pixelRatio)
         .intersected(pixmap.rect());
     if (selectionScaled.isEmpty()) {
         return;

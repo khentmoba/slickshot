@@ -35,8 +35,8 @@ void AppUpdateInstaller::openUpdate(const AppUpdateInfo& info)
 
     // Even if releaseInfo() already filtered these, re-check at the download
     // boundary so a caller can never make us fetch untrusted URLs.
-    if (!AppUpdate::isTrustedAssetUrl(info.installerUrl) ||
-        !AppUpdate::isTrustedAssetUrl(info.checksumUrl) ||
+    if (!AppUpdate::isTrustedInitialAssetUrl(info.installerUrl) ||
+        !AppUpdate::isTrustedInitialAssetUrl(info.checksumUrl) ||
         !AppUpdate::canInstallInPlace(info)) {
         if (AppUpdate::isTrustedReleasePageUrl(info.pageUrl)) {
             QDesktopServices::openUrl(QUrl(info.pageUrl));
@@ -314,6 +314,7 @@ void AppUpdateInstaller::install()
     // The script waits for this process to exit, runs the installer silently,
     // and starts SlickShot again.
     m_progress->hide();
+    deleteLater();
     QCoreApplication::quit();
 }
 

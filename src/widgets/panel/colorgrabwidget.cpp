@@ -127,7 +127,8 @@ bool ColorGrabWidget::eventFilter(QObject*, QEvent* event)
         OverlayMessage* overlayMsg = OverlayMessage::instance();
         if (overlayMsg != nullptr) {
             overlayMsg->setVisibility(
-              !overlayMsg->geometry().contains(cursorPos()));
+              !overlayMsg->rect().contains(
+                overlayMsg->mapFromGlobal(cursorPos())));
         }
 
         m_color = getColorAtPoint(cursorPos());
