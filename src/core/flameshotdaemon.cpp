@@ -13,6 +13,7 @@
 #include <QIODevice>
 #include <QPixmap>
 #include <QRect>
+#include <QTimer>
 
 #if !(defined(Q_OS_MACOS) || defined(Q_OS_WIN))
 #include <QDBusConnection>
@@ -40,6 +41,7 @@
 
 #ifdef Q_OS_WIN
 #include "core/globalshortcutfilter.h"
+#include "utils/launcherutils.h"
 #endif
 
 namespace {
@@ -118,9 +120,23 @@ FlameshotDaemon::FlameshotDaemon()
                 m_persist = !config.autoCloseIdleDaemon();
             });
 
+#if defined(Q_OS_WIN)
+    // Sweep stale "Open With" temp screenshots left behind by earlier runs.
+    QTimer::singleShot(5000, this, []() {
+        launcherutils::cleanupStaleOpenWithFiles(
+          launcherutils::openWithTempDir());
+    });
+#endif
+
 #if !defined(DISABLE_UPDATE_CHECKER)
+    // Defer the initial update check so startup does not initialize the
+    // network/TLS stack before the app is ready to capture.
     if (ConfigHandler().checkForUpdates()) {
-        getLatestAvailableVersion();
+        QTimer::singleShot(5000, this, [this]() {
+            if (ConfigHandler().checkForUpdates()) {
+                getLatestAvailableVersion();
+            }
+        });
     }
 #endif
 }

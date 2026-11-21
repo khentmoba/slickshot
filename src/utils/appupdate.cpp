@@ -12,8 +12,6 @@
 #if defined(Q_OS_WIN)
 #include <windows.h>
 
-#include <shellapi.h>
-
 #include <string>
 #endif
 
@@ -180,11 +178,23 @@ QString AppUpdate::installScript(qint64 pid,
              "$installer = %2\n"
              "$app = %4\n"
              "# Bound the wait so a hung SlickShot cannot block the update.\n"
-             "try {\n"
-             "  Wait-Process -Id %1 -Timeout 120 -ErrorAction Stop\n"
-             "} catch {\n"
-             "  ('Timed out waiting for SlickShot to exit: ' + $_) | "
-             "Add-Content -LiteralPath $log\n"
+             "$proc = Get-Process -Id %1 -ErrorAction SilentlyContinue\n"
+             "if ($null -ne $proc) {\n"
+             "  $exited = $true\n"
+             "  try {\n"
+             "    $exited = $proc.WaitForExit(120000)\n"
+             "  } catch [System.InvalidOperationException] {\n"
+             "    $exited = $true\n"
+             "  }\n"
+             "  if (-not $exited) {\n"
+             "    'Timed out waiting for SlickShot to exit; aborting update.' "
+             "| Add-Content -LiteralPath $log\n"
+             "    Remove-Item -LiteralPath $installer -Force "
+             "-ErrorAction SilentlyContinue\n"
+             "    Remove-Item -LiteralPath (Split-Path -Parent $installer) "
+             "-Force -ErrorAction SilentlyContinue\n"
+             "    exit 1\n"
+             "  }\n"
              "}\n"
              "try {\n"
              "  # Hold the installer open until it exits. Other processes "
@@ -228,18 +238,57 @@ QString AppUpdate::encodeCommand(const QString& script)
     return QString::fromLatin1(utf16.toBase64());
 }
 
+QString AppUpdate::powershellExecutablePath()
+{
+#if defined(Q_OS_WIN)
+    wchar_t sysDir[MAX_PATH] = {};
+    const UINT len = GetSystemDirectoryW(sysDir, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH) {
+        return {};
+    }
+    return QDir::toNativeSeparators(
+      QDir(QString::fromWCharArray(sysDir, static_cast<int>(len)))
+        .filePath(QStringLiteral("WindowsPowerShell/v1.0/powershell.exe")));
+#else
+    return {};
+#endif
+}
+
 bool AppUpdate::startHidden(const QString& program, const QString& arguments)
 {
 #if defined(Q_OS_WIN)
-    const std::wstring file = program.toStdWString();
-    const std::wstring params = arguments.toStdWString();
+    if (program.isEmpty()) {
+        return false;
+    }
+    const std::wstring appName = program.toStdWString();
+    std::wstring cmdLine = L"\"" + appName + L"\"";
+    if (!arguments.isEmpty()) {
+        cmdLine += L" ";
+        cmdLine += arguments.toStdWString();
+    }
 
-    SHELLEXECUTEINFOW info{};
-    info.cbSize = static_cast<DWORD>(sizeof(info));
-    info.lpFile = file.c_str();
-    info.lpParameters = params.c_str();
-    info.nShow = SW_HIDE;
-    return ShellExecuteExW(&info) != FALSE;
+    STARTUPINFOW si{};
+    si.cb = static_cast<DWORD>(sizeof(si));
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+
+    PROCESS_INFORMATION pi{};
+    const BOOL started = CreateProcessW(appName.c_str(),
+                                        cmdLine.data(),
+                                        nullptr,
+                                        nullptr,
+                                        FALSE,
+                                        CREATE_NO_WINDOW,
+                                        nullptr,
+                                        nullptr,
+                                        &si,
+                                        &pi);
+    if (!started) {
+        return false;
+    }
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return true;
 #else
     Q_UNUSED(program);
     Q_UNUSED(arguments);

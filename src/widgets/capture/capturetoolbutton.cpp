@@ -14,16 +14,20 @@
 #include <QPropertyAnimation>
 #include <QToolTip>
 
+#include <memory>
+
 // Button represents a single button of the capture widget, it can enable
 // multiple functionality.
 
-CaptureToolButton::CaptureToolButton(const CaptureTool::Type t, QWidget* parent)
+CaptureToolButton::CaptureToolButton(const CaptureTool::Type t,
+                                     QWidget* parent,
+                                     ConfigHandler* config)
   : CaptureButton(parent)
   , m_buttonType(t)
   , m_tool(nullptr)
   , m_emergeAnimation(nullptr)
 {
-    initButton();
+    initButton(config);
     updateIcon();
 }
 
@@ -35,7 +39,7 @@ CaptureToolButton::~CaptureToolButton()
     m_emergeAnimation = nullptr;
 }
 
-void CaptureToolButton::initButton()
+void CaptureToolButton::initButton(ConfigHandler* config)
 {
     if (m_tool) {
         delete m_tool;
@@ -50,11 +54,15 @@ void CaptureToolButton::initButton()
     // Modern Windows 11 Fluent rounded-rect style (no circular ellipse mask)
 
     // Set a tooltip showing a shortcut in parentheses (if there is a shortcut)
+    std::unique_ptr<ConfigHandler> localConfig;
+    if (!config) {
+        localConfig = std::make_unique<ConfigHandler>();
+        config = localConfig.get();
+    }
     QString tooltip = m_tool->description();
     QString shortcut =
-      ConfigHandler().shortcut(QVariant::fromValue(m_buttonType).toString());
-    if (m_buttonType == CaptureTool::TYPE_COPY &&
-        ConfigHandler().copyOnDoubleClick()) {
+      config->shortcut(QVariant::fromValue(m_buttonType).toString());
+    if (m_buttonType == CaptureTool::TYPE_COPY && config->copyOnDoubleClick()) {
         tooltip += QStringLiteral(" (%1Left Double-Click)")
                      .arg(shortcut.isEmpty() ? QString() : shortcut + " or ");
     } else if (!shortcut.isEmpty()) {

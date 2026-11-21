@@ -3,8 +3,35 @@
 
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 #include <windows.h>
+
+static void writeAll(HANDLE handle, const char* data, DWORD size)
+{
+    if (handle == NULL || handle == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    DWORD offset = 0;
+    while (offset < size) {
+        DWORD written = 0;
+        if (!WriteFile(
+              handle, data + offset, size - offset, &written, NULL) ||
+            written == 0) {
+            break;
+        }
+        offset += written;
+    }
+}
+
+static void relayPipe(HANDLE readHandle, HANDLE destHandle)
+{
+    char buffer[4096];
+    DWORD n = 0;
+    while (ReadFile(readHandle, buffer, sizeof(buffer), &n, NULL) && n > 0) {
+        writeAll(destHandle, buffer, n);
+    }
+}
 
 // Quote a single argument per the CommandLineToArgvW rules so that spaces,
 // quotes, and backslashes are preserved as literal data.
@@ -69,7 +96,8 @@ int CallFlameshot(int argc, wchar_t* argv[], bool wait)
     std::vector<wchar_t> mutableCmd(cmdline.begin(), cmdline.end());
     mutableCmd.push_back(L'\0');
 
-    HANDLE readEnd = NULL, writeEnd = NULL;
+    HANDLE outRead = NULL, outWrite = NULL;
+    HANDLE errRead = NULL, errWrite = NULL;
     STARTUPINFOW si{};
     si.cb = sizeof(si);
 
@@ -77,15 +105,23 @@ int CallFlameshot(int argc, wchar_t* argv[], bool wait)
         SECURITY_ATTRIBUTES sa{};
         sa.nLength = sizeof(sa);
         sa.bInheritHandle = TRUE;
-        if (!CreatePipe(&readEnd, &writeEnd, &sa, 0)) {
+        if (!CreatePipe(&outRead, &outWrite, &sa, 0)) {
             return static_cast<int>(GetLastError());
         }
-        SetHandleInformation(readEnd, HANDLE_FLAG_INHERIT, 0);
+        SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0);
+
+        if (!CreatePipe(&errRead, &errWrite, &sa, 0)) {
+            const DWORD err = GetLastError();
+            CloseHandle(outRead);
+            CloseHandle(outWrite);
+            return static_cast<int>(err);
+        }
+        SetHandleInformation(errRead, HANDLE_FLAG_INHERIT, 0);
 
         si.dwFlags = STARTF_USESTDHANDLES;
         si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-        si.hStdOutput = writeEnd;
-        si.hStdError = writeEnd;
+        si.hStdOutput = outWrite;
+        si.hStdError = errWrite;
     }
 
     PROCESS_INFORMATION pi{};
@@ -94,38 +130,52 @@ int CallFlameshot(int argc, wchar_t* argv[], bool wait)
       mutableCmd.data(),
       NULL,
       NULL,
-      wait ? TRUE : FALSE, // only inherit handles when we created a pipe
+      wait ? TRUE : FALSE, // only inherit handles when we created pipes
       0,
       NULL,
       NULL,
       &si,
       &pi);
 
-    if (writeEnd) {
-        CloseHandle(writeEnd);
-        writeEnd = NULL;
+    if (outWrite) {
+        CloseHandle(outWrite);
+        outWrite = NULL;
+    }
+    if (errWrite) {
+        CloseHandle(errWrite);
+        errWrite = NULL;
     }
 
     if (!ok) {
-        if (readEnd) {
-            CloseHandle(readEnd);
+        const DWORD err = GetLastError();
+        if (outRead) {
+            CloseHandle(outRead);
         }
-        return static_cast<int>(GetLastError());
+        if (errRead) {
+            CloseHandle(errRead);
+        }
+        return static_cast<int>(err);
     }
 
     int exitCode = 0;
 
     if (wait) {
-        // Read child's stdout/stderr
+        // Relay child's stdout and stderr separately as raw bytes so binary
+        // outputs (such as --raw PNGs) are not altered by text-mode CR/LF
+        // translation or mixed with diagnostic messages.
         SetConsoleOutputCP(CP_UTF8);
         SetConsoleCP(CP_UTF8);
-        char buffer[2048];
-        DWORD n = 0;
-        while (ReadFile(readEnd, buffer, sizeof(buffer), &n, NULL) && n > 0) {
-            std::cout.write(buffer, n);
-        }
-        CloseHandle(readEnd);
-        readEnd = NULL;
+        const HANDLE stdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        const HANDLE stdErr = GetStdHandle(STD_ERROR_HANDLE);
+
+        std::thread errThread(relayPipe, errRead, stdErr);
+        relayPipe(outRead, stdOut);
+        errThread.join();
+
+        CloseHandle(outRead);
+        CloseHandle(errRead);
+        outRead = NULL;
+        errRead = NULL;
 
         WaitForSingleObject(pi.hProcess, INFINITE);
         DWORD code = 0;

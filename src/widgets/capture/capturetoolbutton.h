@@ -11,6 +11,7 @@
 
 class QWidget;
 class QPropertyAnimation;
+class ConfigHandler;
 
 class CaptureToolButton : public CaptureButton
 {
@@ -18,7 +19,8 @@ class CaptureToolButton : public CaptureButton
 
 public:
     explicit CaptureToolButton(const CaptureTool::Type,
-                               QWidget* parent = nullptr);
+                               QWidget* parent = nullptr,
+                               ConfigHandler* config = nullptr);
     ~CaptureToolButton();
 
     static const QList<CaptureTool::Type>& getIterableButtonTypes();
@@ -48,6 +50,6 @@ private:
 
     QPropertyAnimation* m_emergeAnimation;
 
-    void initButton();
+    void initButton(ConfigHandler* config = nullptr);
     void updateIcon();
 };

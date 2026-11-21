@@ -15,10 +15,24 @@
 
 namespace {
 constexpr int kProgressSteps = 1000;
+constexpr int kTransferTimeoutMs = 30000;
+constexpr int kMaxRedirects = 5;
+constexpr qint64 kMaxChecksumBytes = 64 * 1024;
+constexpr qint64 kMaxInstallerBytes = 512LL * 1024 * 1024;
 }
+
+QPointer<AppUpdateInstaller> AppUpdateInstaller::s_activeInstaller;
 
 void AppUpdateInstaller::openUpdate(const AppUpdateInfo& info)
 {
+    if (s_activeInstaller) {
+        if (s_activeInstaller->m_progress) {
+            s_activeInstaller->m_progress->raise();
+            s_activeInstaller->m_progress->activateWindow();
+        }
+        return;
+    }
+
     // Even if releaseInfo() already filtered these, re-check at the download
     // boundary so a caller can never make us fetch untrusted URLs.
     if (!AppUpdate::isTrustedAssetUrl(info.installerUrl) ||
@@ -30,6 +44,7 @@ void AppUpdateInstaller::openUpdate(const AppUpdateInfo& info)
         return;
     }
     auto* installer = new AppUpdateInstaller(info);
+    s_activeInstaller = installer;
     installer->start();
 }
 
@@ -40,13 +55,18 @@ AppUpdateInstaller::AppUpdateInstaller(const AppUpdateInfo& info)
   , m_reply(nullptr)
   , m_progress(nullptr)
   , m_hash(QCryptographicHash::Sha256)
+  , m_downloadedBytes(0)
   , m_canceled(false)
   , m_writeError(false)
   , m_redirectBlocked(false)
+  , m_sizeExceeded(false)
 {}
 
 AppUpdateInstaller::~AppUpdateInstaller()
 {
+    if (s_activeInstaller == this) {
+        s_activeInstaller = nullptr;
+    }
     m_installerFile.reset();
     delete m_progress;
 }
@@ -77,17 +97,34 @@ void AppUpdateInstaller::downloadChecksum()
                 "installed."));
         return;
     }
+    m_redirectBlocked = false;
+    m_sizeExceeded = false;
     QNetworkReply* reply = get(QUrl(m_info.checksumUrl));
+    connect(reply, &QNetworkReply::readyRead, this, [this, reply] {
+        if (reply->bytesAvailable() > kMaxChecksumBytes) {
+            m_sizeExceeded = true;
+            reply->abort();
+        }
+    });
     connect(reply, &QNetworkReply::finished, this, [this, reply] {
         m_reply = nullptr;
         const bool ok = reply->error() == QNetworkReply::NoError;
-        const QString content = QString::fromUtf8(reply->readAll());
+        const QByteArray raw = reply->read(kMaxChecksumBytes + 1);
+        if (raw.size() > kMaxChecksumBytes) {
+            m_sizeExceeded = true;
+        }
+        const QString content = QString::fromUtf8(raw);
         const QString error = reply->errorString();
         reply->deleteLater();
 
         if (m_redirectBlocked) {
             fail(tr("The update was redirected to an untrusted server. The "
                     "update was not installed."));
+            return;
+        }
+        if (m_sizeExceeded) {
+            fail(tr("The update checksum exceeded the maximum allowed size. "
+                    "The update was not installed."));
             return;
         }
         if (!ok) {
@@ -115,23 +152,34 @@ void AppUpdateInstaller::downloadInstaller()
                 "installed."));
         return;
     }
-    const QString dirPath =
-      QStandardPaths::writableLocation(QStandardPaths::TempLocation) +
-      QStringLiteral("/SlickShot-update");
-    QDir().mkpath(dirPath);
+    const QString tempTemplate =
+      QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+        .filePath(QStringLiteral("SlickShot-update-XXXXXX"));
+    m_tempDir = std::make_unique<QTemporaryDir>(tempTemplate);
+    if (!m_tempDir->isValid()) {
+        const QString err = m_tempDir->errorString();
+        m_tempDir.reset();
+        fail(tr("Could not create a temporary folder for the update.\n\n%1")
+               .arg(err));
+        return;
+    }
     m_installerPath =
-      QDir(dirPath).filePath(QStringLiteral("SlickShot-update-setup.exe"));
+      m_tempDir->filePath(QStringLiteral("SlickShot-update-setup.exe"));
 
     m_installerFile = std::make_unique<QFile>(m_installerPath);
     if (!m_installerFile->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         const QString err = m_installerFile->errorString();
         m_installerFile.reset();
+        cleanupInstallerFile();
         fail(tr("Could not save the update to %1.\n\n%2")
                .arg(QDir::toNativeSeparators(m_installerPath), err));
         return;
     }
     m_hash.reset();
+    m_downloadedBytes = 0;
     m_writeError = false;
+    m_redirectBlocked = false;
+    m_sizeExceeded = false;
 
     m_progress->setLabelText(
       tr("Downloading SlickShot %1...").arg(m_info.version));
@@ -139,12 +187,18 @@ void AppUpdateInstaller::downloadInstaller()
 
     QNetworkReply* reply = get(QUrl(m_info.installerUrl));
     const auto drainChunk = [this, reply]() {
-        if (!m_installerFile || m_writeError) {
+        if (!m_installerFile || m_writeError || m_sizeExceeded) {
             return;
         }
         while (reply->bytesAvailable() > 0) {
             const QByteArray chunk = reply->read(65536);
             if (chunk.isEmpty()) {
+                break;
+            }
+            m_downloadedBytes += chunk.size();
+            if (m_downloadedBytes > kMaxInstallerBytes) {
+                m_sizeExceeded = true;
+                reply->abort();
                 break;
             }
             m_hash.addData(chunk);
@@ -160,7 +214,13 @@ void AppUpdateInstaller::downloadInstaller()
     connect(reply,
             &QNetworkReply::downloadProgress,
             this,
-            [this](qint64 received, qint64 total) {
+            [this, reply](qint64 received, qint64 total) {
+                if (total > kMaxInstallerBytes ||
+                    received > kMaxInstallerBytes) {
+                    m_sizeExceeded = true;
+                    reply->abort();
+                    return;
+                }
                 if (total > 0) {
                     m_progress->setRange(0, kProgressSteps);
                     m_progress->setValue(
@@ -190,6 +250,12 @@ void AppUpdateInstaller::downloadInstaller()
                     "update was not installed."));
             return;
         }
+        if (m_sizeExceeded) {
+            cleanupInstallerFile();
+            fail(tr("The update download exceeded the maximum allowed size. "
+                    "The update was not installed."));
+            return;
+        }
         if (m_writeError) {
             cleanupInstallerFile();
             fail(tr("Could not save the update to %1.\n\n%2")
@@ -215,6 +281,14 @@ void AppUpdateInstaller::downloadInstaller()
 
 void AppUpdateInstaller::install()
 {
+    const QString powershell = AppUpdate::powershellExecutablePath();
+    if (powershell.isEmpty()) {
+        cleanupInstallerFile();
+        fail(tr("SlickShot was not updated because Windows PowerShell could "
+                "not be located."));
+        return;
+    }
+
     const QString script = AppUpdate::installScript(
       QCoreApplication::applicationPid(),
       QDir::toNativeSeparators(m_installerPath),
@@ -224,11 +298,17 @@ void AppUpdateInstaller::install()
       QStringLiteral("-NoProfile -NonInteractive -WindowStyle Hidden "
                      "-ExecutionPolicy Bypass -EncodedCommand ") +
       AppUpdate::encodeCommand(script);
-    if (!AppUpdate::startHidden(QStringLiteral("powershell.exe"), arguments)) {
+    if (!AppUpdate::startHidden(powershell, arguments)) {
         cleanupInstallerFile();
         fail(tr("SlickShot was not updated because the update script could "
                 "not start."));
         return;
+    }
+
+    // Hand ownership of the temporary directory to the updater script so our
+    // destructor does not delete the installer before PowerShell runs it.
+    if (m_tempDir) {
+        m_tempDir->setAutoRemove(false);
     }
 
     // The script waits for this process to exit, runs the installer silently,
@@ -242,6 +322,10 @@ void AppUpdateInstaller::cleanupInstallerFile()
     m_installerFile.reset();
     if (!m_installerPath.isEmpty()) {
         QFile::remove(m_installerPath);
+    }
+    if (m_tempDir) {
+        m_tempDir->remove();
+        m_tempDir.reset();
     }
 }
 
@@ -261,16 +345,19 @@ QNetworkReply* AppUpdateInstaller::get(const QUrl& url)
 {
     QNetworkRequest request(url);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                         QNetworkRequest::NoLessSafeRedirectPolicy);
+                         QNetworkRequest::UserVerifiedRedirectPolicy);
+    request.setMaximumRedirectsAllowed(kMaxRedirects);
+    request.setTransferTimeout(kTransferTimeoutMs);
     QNetworkReply* reply = m_network->get(request);
-    // NoLessSafeRedirectPolicy follows any HTTPS redirect. Re-apply the
-    // trusted-host rule on every hop so a GitHub URL cannot bounce the update
-    // to an arbitrary server that serves a matching checksum.
+    // Approve every redirect explicitly before Qt sends a request to the
+    // target host so an untrusted server is never contacted.
     connect(reply,
             &QNetworkReply::redirected,
             this,
             [this, reply](const QUrl& redirectUrl) {
-                if (!AppUpdate::isTrustedAssetUrl(redirectUrl.toString())) {
+                if (AppUpdate::isTrustedAssetUrl(redirectUrl.toString())) {
+                    emit reply->redirectAllowed();
+                } else {
                     m_redirectBlocked = true;
                     reply->abort();
                 }

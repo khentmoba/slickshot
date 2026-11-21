@@ -28,10 +28,11 @@ InfoWindow::InfoWindow(QWidget* parent)
     show();
     // Call show() first, otherwise the correct geometry cannot be fetched for
     // centering the window on the screen
-    QRect position = frameGeometry();
-    QScreen* screen = QGuiAppCurrentScreen().currentScreen();
-    position.moveCenter(screen->availableGeometry().center());
-    move(position.topLeft());
+    if (QScreen* screen = QGuiAppCurrentScreen().currentScreen()) {
+        QRect position = frameGeometry();
+        position.moveCenter(screen->availableGeometry().center());
+        move(position.topLeft());
+    }
 }
 
 InfoWindow::~InfoWindow()

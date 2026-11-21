@@ -21,8 +21,9 @@ OverlayMessage::OverlayMessage(QWidget* parent, const QRect& targetArea)
     setAlignment(Qt::AlignCenter);
     setTextFormat(Qt::RichText);
 
-    m_fillColor = ConfigHandler().uiColor();
-    int opacity = ConfigHandler().contrastOpacity();
+    ConfigHandler config;
+    m_fillColor = config.uiColor();
+    int opacity = config.contrastOpacity();
     m_textColor =
       (ColorUtils::colorIsDark(m_fillColor) ? Qt::white : Qt::black);
     // map a background opacity range 0-255 to a fill opacity range 190-160

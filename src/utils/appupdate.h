@@ -52,6 +52,9 @@ QString installScript(qint64 pid,
 // Base64 of UTF-16LE text, the form powershell -EncodedCommand expects.
 QString encodeCommand(const QString& script);
 
+// Full path to Windows PowerShell inside System32, or empty if unavailable.
+QString powershellExecutablePath();
+
 // Starts a program without showing a window. Returns false if it did not start.
 bool startHidden(const QString& program, const QString& arguments);
 

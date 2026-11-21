@@ -32,10 +32,11 @@ ShortcutsWidget::ShortcutsWidget(QWidget* parent)
     setWindowIcon(QIcon(GlobalValues::iconPath()));
     setWindowTitle(tr("Hot Keys"));
 
-    QRect position = frameGeometry();
-    QScreen* screen = QGuiAppCurrentScreen().currentScreen();
-    position.moveCenter(screen->availableGeometry().center());
-    move(position.topLeft());
+    if (QScreen* screen = QGuiAppCurrentScreen().currentScreen()) {
+        QRect position = frameGeometry();
+        position.moveCenter(screen->availableGeometry().center());
+        move(position.topLeft());
+    }
 
     m_layout = new QVBoxLayout(this);
     m_layout->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
