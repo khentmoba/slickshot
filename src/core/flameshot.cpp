@@ -689,8 +689,8 @@ void Flameshot::exportCapture(const QPixmap& capture,
 #ifdef ENABLE_IMGUR
     if (tasks & CR::UPLOAD) {
         if (!ConfigHandler().uploadWithoutConfirmation()) {
-            ImgUploadDialog dialog;
-            if (dialog.exec() == QDialog::Rejected) {
+            auto* dialog = new ImgUploadDialog();
+            if (dialog->exec() == QDialog::Rejected) {
                 return;
             }
         }
