@@ -9,9 +9,13 @@ Generates:
 4. Multi-resolution Windows .ico (16, 24, 32, 48, 64, 128, 256)
 """
 
+import argparse
 import os
+import pathlib
+import re
 import subprocess
-from PIL import Image
+import sys
+import xml.etree.ElementTree as ET
 
 # 1. Master Application Icon SVG (Solid Black Squircle Base with White Shears)
 APP_ICON_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
@@ -143,7 +147,78 @@ def render_svg_to_png(svg_content, out_png_path, size=1024):
     if os.path.exists(temp_html):
         os.remove(temp_html)
 
-def main():
+def check_assets(repo_root=None):
+    """Validate SVGs for QtSvg compatibility and verify all graphics.qrc paths exist."""
+    root = pathlib.Path(repo_root or pathlib.Path(__file__).resolve().parent.parent)
+    errors = []
+    rgba_re = re.compile(r"\brgba\s*\(", re.IGNORECASE)
+
+    # 1. Validate embedded SVG templates in this script.
+    for name, content in [
+        ("APP_ICON_SVG", APP_ICON_SVG),
+        ("TRAY_MONOCHROME_SVG", TRAY_MONOCHROME_SVG),
+        ("TRAY_MASK_SVG", TRAY_MASK_SVG),
+    ]:
+        if rgba_re.search(content):
+            errors.append(f"{name}: contains CSS rgba() (unsupported by QtSvg)")
+        try:
+            ET.fromstring(content)
+        except ET.ParseError as exc:
+            errors.append(f"{name}: invalid XML ({exc})")
+
+    # 2. Validate tracked SVG files under assets/ and data/img/.
+    svg_count = 0
+    for search_dir in (root / "assets", root / "data" / "img"):
+        if not search_dir.exists():
+            continue
+        for svg_path in sorted(search_dir.rglob("*.svg")):
+            svg_count += 1
+            rel = svg_path.relative_to(root).as_posix()
+            text = svg_path.read_text(encoding="utf-8")
+            if rgba_re.search(text):
+                errors.append(f"{rel}: contains CSS rgba() (unsupported by QtSvg)")
+            try:
+                ET.fromstring(text)
+            except ET.ParseError as exc:
+                errors.append(f"{rel}: invalid XML ({exc})")
+
+    # 3. Verify every <file> entry in data/graphics.qrc exists on disk.
+    qrc_path = root / "data" / "graphics.qrc"
+    qrc_count = 0
+    if not qrc_path.exists():
+        errors.append("data/graphics.qrc: file not found")
+    else:
+        try:
+            tree = ET.parse(qrc_path)
+            for elem in tree.findall(".//file"):
+                entry = (elem.text or "").strip()
+                if not entry:
+                    errors.append("data/graphics.qrc: empty <file> element")
+                    continue
+                qrc_count += 1
+                target = qrc_path.parent / entry
+                if not target.is_file():
+                    errors.append(
+                        f"data/graphics.qrc: missing asset data/{entry}"
+                    )
+        except ET.ParseError as exc:
+            errors.append(f"data/graphics.qrc: invalid XML ({exc})")
+
+    if errors:
+        for err in errors:
+            print(f"ERROR: {err}", file=sys.stderr)
+        return 1
+
+    print(
+        f"Asset check passed: {svg_count} SVGs validated, "
+        f"{qrc_count} graphics.qrc entries verified."
+    )
+    return 0
+
+
+def generate_assets():
+    from PIL import Image
+
     print("Step 1: Writing vector SVG source files...")
     # 1. Update assets/icon.svg (for README and branding)
     with open("assets/icon.svg", "w", encoding="utf-8") as f:
@@ -223,6 +298,22 @@ def main():
         print(f"  -> {ico_p} saved with sizes: {ico_sizes}")
 
     print("\nAll assets successfully generated!")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate or validate SlickShot logo and QRC assets."
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Validate SVGs (no CSS rgba(), valid XML) and verify data/graphics.qrc paths.",
+    )
+    args = parser.parse_args()
+    if args.check:
+        sys.exit(check_assets())
+    generate_assets()
+
 
 if __name__ == "__main__":
     main()

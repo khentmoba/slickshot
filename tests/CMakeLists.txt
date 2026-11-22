@@ -10,6 +10,8 @@ if(Qt${QT_VERSION_MAJOR}Test_FOUND)
     ${CMAKE_SOURCE_DIR}/data/graphics.qrc
   )
 
+  set_target_properties(tst_slickshot PROPERTIES WIN32_EXECUTABLE OFF)
+
   target_link_libraries(tst_slickshot
     PRIVATE
     flameshot_lib
@@ -25,9 +27,9 @@ if(Qt${QT_VERSION_MAJOR}Test_FOUND)
     )
   endif()
 
-  add_test(NAME tst_slickshot COMMAND tst_slickshot)
+  add_test(NAME tst_slickshot COMMAND tst_slickshot -o -,txt)
   set_tests_properties(tst_slickshot PROPERTIES
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
   )
   if(WIN32)
     # Qt is linked dynamically. CTest puts Qt's bin directory on PATH, but a

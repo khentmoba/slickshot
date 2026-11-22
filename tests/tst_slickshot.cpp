@@ -20,6 +20,7 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QPointer>
+#include <QSettings>
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QTableWidget>
@@ -82,6 +83,7 @@ class SlickShotTests : public QObject
 
 private slots:
     void initTestCase();
+    void cleanupTestCase();
     void testAppUpdateReleaseInfo();
     void testAppUpdateSha256();
     void testAppUpdateTrustedHosts();
@@ -152,11 +154,23 @@ private slots:
 #if !defined(DISABLE_UPDATE_CHECKER)
     void testUpdateNotificationWidget();
 #endif
+
+private:
+    QTemporaryDir m_testConfigDir;
 };
 
 void SlickShotTests::initTestCase()
 {
     QStandardPaths::setTestModeEnabled(true);
+    QVERIFY(m_testConfigDir.isValid());
+    QSettings::setPath(
+      QSettings::IniFormat, QSettings::UserScope, m_testConfigDir.path());
+    QFile::remove(ConfigHandler().configFilePath());
+}
+
+void SlickShotTests::cleanupTestCase()
+{
+    QFile::remove(ConfigHandler().configFilePath());
 }
 
 void SlickShotTests::testAppUpdateReleaseInfo()
