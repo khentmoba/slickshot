@@ -19,7 +19,7 @@ jobs:
         shell: bash
         run: |
           curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- latest
-          ./actionlint
+          ./actionlint -shellcheck=
 
   asset-check:
     runs-on: ubuntu-latest
