@@ -26,18 +26,20 @@ Every feature, interaction, and performance optimization should be evaluated aga
 
 ## Navigation
 
-- Build: `cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build build --config RelWithDebInfo` (mirrors `.github/workflows/build_cmake.yml`).
-- Test: `ctest --test-dir build -C RelWithDebInfo --output-on-failure --no-tests=error` (C++ suite: `tests/tst_slickshot.cpp`).
-- Format: clang-format 11 on `src/` (pinned in `.github/workflows/clang-format.yml`).
-- Windows installer and release smoke test: `packaging/win-installer/smoke-test.ps1`, run by `.github/workflows/Windows-pack.yml`.
+- Build (Windows): `cmake --preset windows && cmake --build --preset windows` (or `cmake -S . -B build -DCMAKE_PREFIX_PATH="C:/Qt/6.9.3/msvc2022_64" -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build build --config RelWithDebInfo`).
+- Test: `ctest --preset windows` (or `ctest --test-dir build -C RelWithDebInfo --output-on-failure --no-tests=error`). C++ suite: `tests/tst_slickshot.cpp` (also runs on Ubuntu 24.04 CI with a Qt 6.4 API floor).
+- Format & Lint: CI checks `src/` and `tests/` with `clang-format 11` (`.github/workflows/clang-format.yml`), changed `.cpp` files with `clang-tidy` (`.clang-tidy`), workflows with `actionlint`, and SVGs/`graphics.qrc` with `python3 scripts/build_logo_assets.py --check`.
+- GitHub & Git: Repo is `khentmoba/slickshot` (default branch `master`; `upstream` is `flameshot-org/flameshot`). Pass `-R khentmoba/slickshot` to `gh`, use `git fetch upstream --no-tags`, and set `GIT_EDITOR=true` for non-interactive `git rebase --continue`.
+- Release & Packaging: See `docs/Releasing.md` for SlickShot's tag-driven release flow and `packaging/win-installer/smoke-test.ps1` (run by `.github/workflows/Windows-pack.yml`).
+- Code Review: Read `CODING_STANDARDS.md` during review for recurring Qt6, Windows HiDPI, and fork-specific invariants.
 
 ## Conventions
 
-- **Formatting:** `.clang-format` is Mozilla-based with 4-space indents and braces on their own line for classes, structs, enums, and functions. CI checks `src/` with clang-format 11 only.
-- **Static analysis:** `.clang-tidy` is in the repo, but no workflow runs it.
-- **Qt:** build against Qt 6, the default in `CMakeLists.txt`.
+- **Formatting:** `.clang-format` is Mozilla-based with 4-space indents and braces on their own line for classes, structs, enums, and functions. CI checks both `src/` and `tests/` with clang-format 11.
+- **Static analysis:** `.clang-tidy` holds a curated Qt-safe check set run on changed `.cpp` files in Linux CI.
+- **Qt:** build against Qt 6, the default in `CMakeLists.txt`. Keep tests and cross-platform code compatible with Ubuntu 24.04's Qt 6.4 API floor.
 - **Tests:** add cases to `tests/tst_slickshot.cpp`. ctest sets `QT_QPA_PLATFORM=offscreen`, so tests run without a visible screen.
-- **Windows check:** test capture and UI changes on Windows before calling them done, since it is the main target.
+- **Verification:** agents verify headless (`ctest` with `QT_QPA_PLATFORM=offscreen` and CI `Windows-pack.yml` smoke tests). Live-screen capture and UI checks are handoff items for the user unless explicitly requested.
 
 ## Notes
 
@@ -47,7 +49,7 @@ Every feature, interaction, and performance optimization should be evaluated aga
 
 ## Web search
 
-For any web search, fetching, docs lookup, current info, or browser automation, use the `$use-tinyfish` skill (`C:/Users/Admin/.agents/skills/use-tinyfish/SKILL.md`), not native web search. Go lightest first: search, then fetch, then agent, then browser. If TinyFish is unavailable and you fall back to native search, say so.
+For web search, docs lookup, or page fetching, use the `$use-tinyfish` skill instead of native web search (lightest first: search, fetch, agent, browser; note if falling back). For GitHub repos, PRs, issues, and diffs, use `gh` and `git` directly instead of web scraping.
 
 ## Communication
 
