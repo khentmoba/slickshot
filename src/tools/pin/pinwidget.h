@@ -43,6 +43,7 @@ private:
 
     void increaseOpacity();
     void decreaseOpacity();
+    void setShadowEnabled(bool enabled);
 
     const QPixmap m_originalPixmap;
     QPixmap m_pixmap;

@@ -34,6 +34,7 @@
 #include <QDir>
 #include <QLibraryInfo>
 #include <QNetworkProxyFactory>
+#include <QScreen>
 #include <QSharedMemory>
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
 #include <QStyleHints>
@@ -599,6 +600,16 @@ int main(int argc, char* argv[])
         CaptureRequest req(CaptureRequest::GRAPHICAL_MODE, delay, path);
         if (!region.isEmpty()) {
             auto selectionRegion = Region().value(region).toRect();
+            if (screenNumber < 0) {
+                const auto screens = QGuiApplication::screens();
+                for (int i = 0; i < screens.size(); ++i) {
+                    if (screens[i]->geometry().contains(
+                          selectionRegion.center())) {
+                        req.setSelectedMonitor(i);
+                        break;
+                    }
+                }
+            }
             req.setInitialSelection(selectionRegion);
         } else if (useLastRegion) {
             req.setInitialSelection(getLastRegion());

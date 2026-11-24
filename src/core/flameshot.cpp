@@ -148,6 +148,46 @@ QRect regionInDesktopPixmap(const QRect& region, const QPixmap& pixmap)
 
 } // namespace
 
+#if defined(Q_OS_WIN)
+#include <qt_windows.h>
+
+namespace {
+void forceForegroundWindow(QWidget* widget)
+{
+    if (!widget) {
+        return;
+    }
+    widget->raise();
+    widget->activateWindow();
+    widget->setFocus(Qt::ActiveWindowFocusReason);
+
+    HWND hwnd = reinterpret_cast<HWND>(widget->winId());
+    if (!hwnd) {
+        return;
+    }
+    if (GetForegroundWindow() == hwnd || SetForegroundWindow(hwnd)) {
+        SetActiveWindow(hwnd);
+        SetFocus(hwnd);
+        return;
+    }
+
+    HWND fgHwnd = GetForegroundWindow();
+    DWORD fgThread = fgHwnd ? GetWindowThreadProcessId(fgHwnd, nullptr) : 0;
+    DWORD curThread = GetCurrentThreadId();
+    const BOOL attached = (fgThread && fgThread != curThread)
+                            ? AttachThreadInput(curThread, fgThread, TRUE)
+                            : FALSE;
+    BringWindowToTop(hwnd);
+    SetForegroundWindow(hwnd);
+    SetActiveWindow(hwnd);
+    SetFocus(hwnd);
+    if (attached) {
+        AttachThreadInput(curThread, fgThread, FALSE);
+    }
+}
+} // namespace
+#endif
+
 Flameshot::Flameshot()
   : m_haveExternalWidget(false)
   , m_captureWindow(nullptr)
@@ -293,7 +333,7 @@ CaptureWidget* Flameshot::gui(const CaptureRequest& req)
 
 #ifdef Q_OS_WIN
         m_captureWindow->show();
-        m_captureWindow->activateCaptureWindow();
+        forceForegroundWindow(m_captureWindow);
 #elif defined(Q_OS_MACOS)
         if (ConfigHandler().useNativeFullscreen()) {
             m_captureWindow->showFullScreen();
@@ -602,19 +642,41 @@ void Flameshot::requestCapture(const CaptureRequest& request)
 
     switch (request.captureMode()) {
         case CaptureRequest::FULLSCREEN_MODE:
-            QTimer::singleShot(request.delay(),
-                               [this, request] { full(request); });
+            if (request.delay() == 0) {
+                QMetaObject::invokeMethod(
+                  qApp,
+                  [this, request]() { full(request); },
+                  Qt::QueuedConnection);
+            } else {
+                QTimer::singleShot(
+                  request.delay(), this, [this, request]() { full(request); });
+            }
             break;
         case CaptureRequest::SCREEN_MODE: {
-            int&& number = request.data().toInt();
-            QTimer::singleShot(request.delay(), [this, request, number]() {
-                screen(request, number);
-            });
+            const int number = request.data().toInt();
+            if (request.delay() == 0) {
+                QMetaObject::invokeMethod(
+                  qApp,
+                  [this, request, number]() { screen(request, number); },
+                  Qt::QueuedConnection);
+            } else {
+                QTimer::singleShot(
+                  request.delay(), this, [this, request, number]() {
+                      screen(request, number);
+                  });
+            }
             break;
         }
         case CaptureRequest::GRAPHICAL_MODE: {
-            QTimer::singleShot(
-              request.delay(), this, [this, request]() { gui(request); });
+            if (request.delay() == 0) {
+                QMetaObject::invokeMethod(
+                  qApp,
+                  [this, request]() { gui(request); },
+                  Qt::QueuedConnection);
+            } else {
+                QTimer::singleShot(
+                  request.delay(), this, [this, request]() { gui(request); });
+            }
             break;
         }
         default:

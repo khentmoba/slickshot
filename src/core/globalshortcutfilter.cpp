@@ -22,6 +22,10 @@ bool GlobalShortcutFilter::s_prntScrConsumed = false;
 bool GlobalShortcutFilter::s_replaceSnippingTool = false;
 bool GlobalShortcutFilter::s_intlBackslashCapture = false;
 
+#ifndef MOD_NOREPEAT
+#define MOD_NOREPEAT 0x4000
+#endif
+
 LRESULT CALLBACK GlobalShortcutFilter::lowLevelKeyboardProc(int nCode,
                                                             WPARAM wParam,
                                                             LPARAM lParam)
@@ -226,9 +230,12 @@ void GlobalShortcutFilter::syncHotkeys()
     UnregisterHotKey(NULL, 3);
     if (s_replaceSnippingTool) {
         // Fallback hotkeys in case hook is temporarily bypassed
-        RegisterHotKey(NULL, 1, 0, VK_SNAPSHOT);
-        RegisterHotKey(NULL, 2, MOD_SHIFT, VK_SNAPSHOT);
-        RegisterHotKey(NULL, 3, MOD_WIN | MOD_SHIFT, 'S');
+        RegisterHotKey(NULL, 1, MOD_NOREPEAT, VK_SNAPSHOT) ||
+          RegisterHotKey(NULL, 1, 0, VK_SNAPSHOT);
+        RegisterHotKey(NULL, 2, MOD_SHIFT | MOD_NOREPEAT, VK_SNAPSHOT) ||
+          RegisterHotKey(NULL, 2, MOD_SHIFT, VK_SNAPSHOT);
+        RegisterHotKey(NULL, 3, MOD_WIN | MOD_SHIFT | MOD_NOREPEAT, 'S') ||
+          RegisterHotKey(NULL, 3, MOD_WIN | MOD_SHIFT, 'S');
     }
 }
 #endif

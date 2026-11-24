@@ -98,6 +98,22 @@ PinWidget::PinWidget(const QPixmap& pixmap,
       });
 }
 
+void PinWidget::setShadowEnabled(bool enabled)
+{
+    m_shadowEffect->setEnabled(enabled);
+
+    const int margin = enabled ? MARGIN : 0;
+    const QMargins wanted(margin, margin, margin, margin);
+    const QMargins current = m_layout->contentsMargins();
+    if (current == wanted) {
+        return;
+    }
+
+    const QRect content = geometry().marginsRemoved(current);
+    m_layout->setContentsMargins(wanted);
+    setGeometry(content.marginsAdded(wanted));
+}
+
 void PinWidget::closePin()
 {
     update();
@@ -383,6 +399,15 @@ void PinWidget::showContextMenu(const QPoint& pos)
             this,
             &PinWidget::decreaseOpacity);
     contextMenu.addAction(&decreaseOpacityAction);
+
+    contextMenu.addSeparator();
+
+    QAction shadowAction(tr("Drop shadow"), this);
+    shadowAction.setCheckable(true);
+    shadowAction.setChecked(m_shadowEffect->isEnabled());
+    connect(
+      &shadowAction, &QAction::toggled, this, &PinWidget::setShadowEnabled);
+    contextMenu.addAction(&shadowAction);
 
     QAction closePinAction(tr("Close"), this);
     connect(&closePinAction, &QAction::triggered, this, &PinWidget::closePin);
