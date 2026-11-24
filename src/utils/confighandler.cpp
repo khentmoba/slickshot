@@ -360,6 +360,11 @@ void ConfigHandler::setStartupLaunch(const bool start)
 
 void ConfigHandler::ensureStartupLaunch(const bool start)
 {
+    // Tests use QStandardPaths test mode; never let a test binary overwrite
+    // the real startup entry and its app icon in Windows Settings.
+    if (QStandardPaths::isTestModeEnabled()) {
+        return;
+    }
     if (start != value(QStringLiteral("startupLaunch")).toBool()) {
         setValue(QStringLiteral("startupLaunch"), start);
     }
