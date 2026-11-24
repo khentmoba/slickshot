@@ -84,6 +84,9 @@ class SlickShotTests : public QObject
 private slots:
     void initTestCase();
     void cleanupTestCase();
+#if defined(Q_OS_WIN)
+    void testStartupLaunchDoesNotRewriteRegistryInTestMode();
+#endif
     void testAppUpdateReleaseInfo();
     void testAppUpdateSha256();
     void testAppUpdateTrustedHosts();
@@ -172,6 +175,33 @@ void SlickShotTests::cleanupTestCase()
 {
     QFile::remove(ConfigHandler().configFilePath());
 }
+
+#if defined(Q_OS_WIN)
+void SlickShotTests::testStartupLaunchDoesNotRewriteRegistryInTestMode()
+{
+    QVERIFY(QStandardPaths::isTestModeEnabled());
+    QSettings bootUpSettings(
+      "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
+      QSettings::NativeFormat);
+    const QString key = QStringLiteral("SlickShot");
+    const QString original = bootUpSettings.value(key).toString();
+    const QString sentinel =
+      QCoreApplication::applicationFilePath() + QStringLiteral(".sentinel");
+
+    bootUpSettings.setValue(key, sentinel);
+    ConfigHandler().startupLaunch();
+    GeneralConf conf;
+    Q_UNUSED(conf);
+    const QString after = bootUpSettings.value(key).toString();
+
+    if (original.isEmpty()) {
+        bootUpSettings.remove(key);
+    } else {
+        bootUpSettings.setValue(key, original);
+    }
+    QCOMPARE(after, sentinel);
+}
+#endif
 
 void SlickShotTests::testAppUpdateReleaseInfo()
 {
