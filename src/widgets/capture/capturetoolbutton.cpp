@@ -9,6 +9,8 @@
 #include "widgets/capture/capturewidget.h"
 
 #include <QApplication>
+#include <QCoreApplication>
+#include <QHash>
 #include <QIcon>
 #include <QMouseEvent>
 #include <QPropertyAnimation>
@@ -18,6 +20,24 @@
 
 // Button represents a single button of the capture widget, it can enable
 // multiple functionality.
+
+namespace {
+QHash<CaptureTool::Type, QIcon>& toolIconCache()
+{
+    static QHash<CaptureTool::Type, QIcon> cache;
+    static const bool registered = []() {
+        if (qApp) {
+            QObject::connect(qApp, &QCoreApplication::aboutToQuit, []() {
+                toolIconCache().clear();
+            });
+        }
+        qAddPostRoutine([]() { toolIconCache().clear(); });
+        return true;
+    }();
+    Q_UNUSED(registered)
+    return cache;
+}
+} // namespace
 
 CaptureToolButton::CaptureToolButton(const CaptureTool::Type t,
                                      QWidget* parent,
@@ -97,7 +117,14 @@ QIcon CaptureToolButton::icon() const
 {
     // The capture toolbar floats over the dark capture overlay,
     // so toolbar tool glyphs must always use the white icon set.
-    return m_tool->icon(QColor(0, 0, 0), true);
+    auto& cache = toolIconCache();
+    auto it = cache.constFind(m_buttonType);
+    if (it != cache.constEnd()) {
+        return it.value();
+    }
+    const QIcon icon = m_tool->icon(QColor(0, 0, 0), true);
+    cache.insert(m_buttonType, icon);
+    return icon;
 }
 
 void CaptureToolButton::mousePressEvent(QMouseEvent* e)

@@ -1,7 +1,7 @@
 # Fork Ledger
 
 Upstream repo: `flameshot-org/flameshot` (`upstream/master`)
-Upstream tip SHA: 1c7a704dab00234a7baf0c938b03c657f361858e
+Upstream tip SHA: dcc3bd3175495e04832c4aac0868f1dd15aba2ca
 Upstream issues scanned: 2026-11-18
 
 ## Mirrored Issues
@@ -55,6 +55,7 @@ Upstream issues scanned: 2026-11-18
 ### Skipped
 - `75ac1fdbb5` (rename idle close setting) — Non-Windows option and introduces Flameshot branding in UI.
 - `1dfa279786` (Translations update from Hosted Weblate) — Upstream Weblate translations for Flameshot strings.
+- `dcc3bd3175` (Translations update from Hosted Weblate) — Upstream Weblate Swedish translation.
 - `1c7a704dab` (docs: fix dead xdg-desktop-portal-hyprland wiki link) — Linux/Hyprland-specific documentation.
 
 ## Open PRs
@@ -66,7 +67,10 @@ PR #4975 @ c594ca3e39: Port (Fix configuration window after DPI changes on Windo
 PR #4977 @ 60caeb3343: Port (Fix pinned-image zoom flicker and preserve settled quality)
 PR #5050 @ 52a062986e: Port (Ignore full-screen last region with logical virtual-desktop check → ee96a6c5)
 PR #5022 @ ce1f1eb183: Port (Single-click window selection with mixed-DPI Windows lookup → ee96a6c5)
-PR #4994 @ 4575b1ee06: Port (Add pinShadow config option → ee96a6c5)
+PR #5069 @ aff2f4e75a: Port (Region CLI capture selects the monitor containing the region)
+PR #5068 @ 25eafea11c: Port (Restore SVG namespaces and fix size indicator fill)
+PR #5067 @ bb0f4adbaa: Port (Capture reliability and hotkey fixes; subset ported)
+PR #4994 @ c01874aed5: Port (Add drop shadow option to pinned screenshots)
 PR #4980 @ 2c698c8748: Port (Add optional instant capture global shortcut → ee96a6c5)
 PR #4972 @ 3890a245e7: Port (Automatic subdirectories in filename patterns → c530b5e6)
 PR #4943 @ ed6d2000d8: Port (Text tool drop shadow option → ee96a6c5)

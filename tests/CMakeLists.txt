@@ -78,3 +78,9 @@ if(Qt${QT_VERSION_MAJOR}Test_FOUND)
     )
   endif()
 endif()
+
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME material_icons COMMAND Python3::Interpreter
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_svgs.py)
+endif()

@@ -5,6 +5,7 @@
 #include "core/qguiappcurrentscreen.h"
 #include "utils/confighandler.h"
 #include "utils/globalvalues.h"
+#include "widgets/capture/capturewidget.h"
 
 #include <QApplication>
 #include <QGuiApplication>
@@ -125,7 +126,7 @@ void TrayIcon::initMenu()
         }
 #elif defined(Q_OS_WIN)
         // Brief delay to allow tray QMenu to dismiss before desktop grab
-        QTimer::singleShot(120, this, [this]() { startGuiCapture(); });
+        QTimer::singleShot(60, this, [this]() { startGuiCapture(); });
 #else
         // Wait 400 ms to hide the QMenu
         QTimer::singleShot(400, this, [this]() { startGuiCapture(); });
@@ -273,9 +274,15 @@ void TrayIcon::initScreenMenu()
 
         QAction* screenAction = m_screenMenu->addAction(screenDescription);
         connect(screenAction, &QAction::triggered, this, [this, i]() {
+#if defined(Q_OS_WIN)
+            // Wait and hide the menu
+            QTimer::singleShot(
+              60, this, [this, i]() { startGuiCaptureOnScreen(i); });
+#else
             // Wait and hide the menu
             QTimer::singleShot(
               100, this, [this, i]() { startGuiCaptureOnScreen(i); });
+#endif
         });
     }
 #endif
@@ -283,12 +290,23 @@ void TrayIcon::initScreenMenu()
 
 void TrayIcon::startGuiCapture()
 {
-    Flameshot::instance()->gui();
+    CaptureWidget* widget = Flameshot::instance()->gui();
+#if !defined(DISABLE_UPDATE_CHECKER)
+    if (widget && FlameshotDaemon::instance()) {
+        FlameshotDaemon::instance()->showUpdateNotificationIfAvailable(widget);
+    }
+#else
+    Q_UNUSED(widget)
+#endif
 }
 
 void TrayIcon::startGuiCaptureOnScreen(int screenIndex)
 {
+#if defined(Q_OS_WIN)
+    CaptureRequest req(CaptureRequest::GRAPHICAL_MODE, 0);
+#else
     CaptureRequest req(CaptureRequest::GRAPHICAL_MODE);
+#endif
     req.setSelectedMonitor(screenIndex);
     Flameshot::instance()->requestCapture(req);
 }

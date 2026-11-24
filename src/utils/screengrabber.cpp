@@ -7,6 +7,7 @@
 #include "utils/systemnotification.h"
 #if defined(Q_OS_WIN)
 #include "utils/windowshdrcapture.h"
+#include <qt_windows.h>
 #endif
 
 #include <QApplication>
@@ -609,6 +610,29 @@ QWidget* ScreenGrabber::createMonitorPreviews(const QPixmap& fullScreenshot)
     monitorPreviews->raise();
     monitorPreviews->activateWindow();
     monitorPreviews->setFocus(Qt::ActiveWindowFocusReason);
+#if defined(Q_OS_WIN)
+    if (HWND hwnd = reinterpret_cast<HWND>(monitorPreviews->winId())) {
+        const bool activated =
+          GetForegroundWindow() == hwnd || SetForegroundWindow(hwnd);
+        if (!activated) {
+            HWND fgHwnd = GetForegroundWindow();
+            DWORD fgThread =
+              fgHwnd ? GetWindowThreadProcessId(fgHwnd, nullptr) : 0;
+            DWORD curThread = GetCurrentThreadId();
+            const BOOL attached =
+              (fgThread && fgThread != curThread)
+                ? AttachThreadInput(curThread, fgThread, TRUE)
+                : FALSE;
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+            if (attached) {
+                AttachThreadInput(curThread, fgThread, FALSE);
+            }
+        }
+        SetActiveWindow(hwnd);
+        SetFocus(hwnd);
+    }
+#endif
     return monitorPreviews;
 }
 

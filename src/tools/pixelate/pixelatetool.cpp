@@ -52,6 +52,10 @@ CaptureTool* PixelateTool::copy(QObject* parent)
 {
     auto* tool = new PixelateTool(parent);
     copyParams(this, tool);
+    tool->m_insecurePixelate = m_insecurePixelate;
+    tool->m_effectKey = m_effectKey;
+    tool->m_cachedEffect = m_cachedEffect;
+    tool->m_effectValid = m_effectValid;
     return tool;
 }
 

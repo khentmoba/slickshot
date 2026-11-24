@@ -31,6 +31,7 @@
 #include <QVersionNumber>
 #include <QWheelEvent>
 #include <QWidget>
+#include <memory>
 
 #include "config/cacheutils.h"
 #include "config/configwindow.h"
@@ -143,6 +144,7 @@ private slots:
     void testGeneralConfArrowStepControls();
     void testEditPinRequestAndLifecycle();
     void testPixelateToolThinSelectionNoDivideByZero();
+    void testPixelateToolCopyRetainsCachedEffect();
     void testStrfparseEdgeCases();
     void testCaptureToolObjectsAssignmentOwnership();
     void testCacheUtilsLastRegionRoundTripAndCorruption();
@@ -2061,6 +2063,38 @@ void SlickShotTests::testPixelateToolThinSelectionNoDivideByZero()
     }
     QCOMPARE(first, second);
     QVERIFY(first.pixelColor(12, 11) != QColor(Qt::black));
+}
+
+void SlickShotTests::testPixelateToolCopyRetainsCachedEffect()
+{
+    QPixmap pixmap(40, 40);
+    pixmap.fill(QColor(0x22, 0x44, 0x66));
+
+    CaptureContext ctx;
+    ctx.mousePos = QPoint(5, 5);
+    ctx.toolSize = 4;
+    ctx.color = Qt::red;
+
+    PixelateTool source;
+    source.drawStart(ctx);
+    source.drawMove(QPoint(25, 25));
+
+    QImage first(pixmap.size(), QImage::Format_ARGB32);
+    first.fill(Qt::black);
+    {
+        QPainter painter(&first);
+        source.process(painter, pixmap);
+    }
+
+    std::unique_ptr<CaptureTool> copy(source.copy());
+    QImage second(pixmap.size(), QImage::Format_ARGB32);
+    second.fill(Qt::black);
+    {
+        QPainter painter(&second);
+        copy->process(painter, pixmap);
+    }
+
+    QCOMPARE(first, second);
 }
 
 void SlickShotTests::testStrfparseEdgeCases()
