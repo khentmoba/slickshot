@@ -84,6 +84,7 @@ bool hasLegacyRunEntry()
  */
 #define OPTION(KEY, TYPE)                                                      \
     {                                                                          \
+        /* NOLINTNEXTLINE(bugprone-macro-parentheses) */                       \
         QStringLiteral(KEY), QSharedPointer<ValueHandler>(new TYPE)            \
     }
 
